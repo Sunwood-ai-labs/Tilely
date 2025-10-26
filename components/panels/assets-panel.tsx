@@ -26,6 +26,7 @@ export function AssetsPanel() {
   const addAssets = useProjectStore((state) => state.addAssets);
   const assignAssetToCell = useProjectStore((state) => state.assignAssetToCell);
   const activeCell = useProjectStore((state) => state.activeCell);
+  const setActiveCell = useProjectStore((state) => state.setActiveCell);
   const [tab, setTab] = useState<AssetType | "all">("all");
 
   const filteredAssets = useMemo(() => {
@@ -39,17 +40,24 @@ export function AssetsPanel() {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
     const tasks = files.map((file) => fileToAsset(file, inferAssetType(file)));
-    toast.promise(Promise.all(tasks).then(addAssets), {
-      loading: "アセット解析中...",
-      success: "アセットをライブラリに追加したよ！",
-      error: "読み込みに失敗しちゃった…"
-    });
+    toast.promise(
+      Promise.all(tasks).then((assets) => {
+        addAssets(assets);
+        autoAssignAssetsToCells(assets);
+      }),
+      {
+        loading: "アセット解析中...",
+        success: "アセットをライブラリに追加したよ！",
+        error: "読み込みに失敗しちゃった…"
+      }
+    );
     event.target.value = "";
   };
 
   const handleAssign = (asset: Asset) => {
     const cellIndex = determineTargetCell(project, activeCell);
     assignAssetToCell(cellIndex, asset.id);
+    setActiveCell(cellIndex);
     toast.success(`${asset.name} をセル ${cellIndex + 1} に配置したよ✨`);
   };
 
@@ -155,4 +163,27 @@ function determineTargetCell(project: Project, activeCell?: number) {
   const used = new Set(project.tracks.map((track) => track.cellIndex));
   const firstEmpty = project.composition.grid.cells.findIndex((_, index) => !used.has(index));
   return firstEmpty >= 0 ? firstEmpty : 0;
+}
+
+function autoAssignAssetsToCells(assets: Asset[]) {
+  const visualAssets = assets.filter((asset) => asset.type === "image" || asset.type === "logo" || asset.type === "video");
+  if (visualAssets.length === 0) {
+    return;
+  }
+
+  const placements: string[] = [];
+
+  visualAssets.forEach((asset) => {
+    const state = useProjectStore.getState();
+    const cellIndex = determineTargetCell(state.project, state.activeCell);
+    state.assignAssetToCell(cellIndex, asset.id);
+    state.setActiveCell(cellIndex);
+    placements.push(`セル ${cellIndex + 1}: ${asset.name}`);
+  });
+
+  if (placements.length) {
+    toast.success("アップロードした素材を自動配置したよ！", {
+      description: placements.join(" / ")
+    });
+  }
 }

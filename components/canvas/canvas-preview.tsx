@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type SVGProps, useMemo } from "react";
+import { type CSSProperties, type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useProjectStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -10,10 +10,42 @@ export function CanvasPreview() {
   const project = useProjectStore((state) => state.project);
   const activeCell = useProjectStore((state) => state.activeCell);
   const setActiveCell = useProjectStore((state) => state.setActiveCell);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const { widthRatio, heightRatio } = useMemo(() => parseAspectRatio(project.composition.aspectRatio), [
     project.composition.aspectRatio
   ]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setContainerSize({ width, height });
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const previewDimensions = useMemo(() => {
+    if (!containerSize.width || !containerSize.height) {
+      return null;
+    }
+
+    const safeWidth = Math.max(widthRatio, 1);
+    const safeHeight = Math.max(heightRatio, 1);
+    const scale = Math.min(containerSize.width / safeWidth, containerSize.height / safeHeight);
+
+    return {
+      width: safeWidth * scale,
+      height: safeHeight * scale
+    };
+  }, [containerSize.height, containerSize.width, heightRatio, widthRatio]);
 
   const cells = project.composition.grid.cells;
   const gridStyle = {
@@ -41,44 +73,46 @@ export function CanvasPreview() {
         </div>
       </div>
       <Card className="relative flex flex-1 items-center justify-center overflow-hidden border border-border/40 bg-zinc-950/80">
-        <div
-          className="relative w-full max-w-full"
-          style={{
-            aspectRatio: `${widthRatio} / ${heightRatio}`,
-            background: project.composition.bgColor,
-            borderRadius: "1.5rem",
-            overflow: "hidden"
-          }}
-        >
-          <div className="absolute inset-0 grid" style={gridStyle as CSSProperties}>
-            {cells.map((cell, index) => {
-              const track = project.tracks.find((item) => item.cellIndex === index);
-              const asset = track ? project.assets.find((item) => item.id === track.assetId) : undefined;
-              const isActive = activeCell === index;
-              return (
-                <button
-                  key={cell.id}
-                  type="button"
-                  onClick={() => setActiveCell(index)}
-                  className={cn(
-                    "relative flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] border border-transparent transition",
-                    isActive ? "border-indigo-400 shadow-[0_0_0_2px_rgba(129,140,248,0.6)]" : "border-white/5"
-                  )}
-                >
-                  {asset ? (
-                    <AssetPreview trackId={track!.id} />
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
-                      <ImageOff className="h-5 w-5" />
-                      セル {index + 1}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+        <div ref={containerRef} className="relative flex h-full w-full items-center justify-center">
+          <div
+            className="relative overflow-hidden"
+            style={{
+              ...(previewDimensions
+                ? { width: previewDimensions.width, height: previewDimensions.height }
+                : { aspectRatio: `${widthRatio} / ${heightRatio}`, width: "100%" }),
+              background: project.composition.bgColor,
+              borderRadius: "1.5rem"
+            }}
+          >
+            <div className="absolute inset-0 grid" style={gridStyle as CSSProperties}>
+              {cells.map((cell, index) => {
+                const track = project.tracks.find((item) => item.cellIndex === index);
+                const asset = track ? project.assets.find((item) => item.id === track.assetId) : undefined;
+                const isActive = activeCell === index;
+                return (
+                  <button
+                    key={cell.id}
+                    type="button"
+                    onClick={() => setActiveCell(index)}
+                    className={cn(
+                      "relative flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] border border-transparent transition",
+                      isActive ? "border-indigo-400 shadow-[0_0_0_2px_rgba(129,140,248,0.6)]" : "border-white/5"
+                    )}
+                  >
+                    {asset ? (
+                      <AssetPreview trackId={track!.id} />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+                        <ImageOff className="h-5 w-5" />
+                        セル {index + 1}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
     </section>
   );
 }

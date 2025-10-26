@@ -112,7 +112,8 @@ export function CanvasPreview() {
               })}
             </div>
           </div>
-        </Card>
+        </div>
+      </Card>
     </section>
   );
 }

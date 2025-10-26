@@ -288,37 +288,50 @@ export const useProjectStore = create<ProjectState>()(
   )
 );
 
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
 export async function fileToAsset(file: File, type: AssetType): Promise<Asset> {
-  const url = URL.createObjectURL(file);
+  const dataUrl = await readFileAsDataUrl(file);
   const baseAsset: Asset = {
     id: uuid(),
     name: file.name,
     type,
-    url,
+    url: dataUrl,
     size: file.size,
     createdAt: Date.now()
   };
 
   if (type === "image" || type === "logo") {
-    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve({ width: image.width, height: image.height });
-      image.src = url;
+      image.onerror = () => reject(new Error("Failed to load image metadata"));
+      image.src = dataUrl;
     });
     return { ...baseAsset, ...dimensions };
   }
 
   if (type === "video" || type === "audio") {
-    const metadata = await new Promise<{ duration: number; width?: number; height?: number }>((resolve) => {
+    const metadata = await new Promise<{ duration: number; width?: number; height?: number }>((resolve, reject) => {
       const element = document.createElement(type === "audio" ? "audio" : "video");
       element.preload = "metadata";
-      element.onloadedmetadata = () =>
+      element.onloadedmetadata = () => {
         resolve({
           duration: element.duration,
           width: element instanceof HTMLVideoElement ? element.videoWidth : undefined,
           height: element instanceof HTMLVideoElement ? element.videoHeight : undefined
         });
-      element.src = url;
+      };
+      element.onerror = () => reject(new Error("Failed to load media metadata"));
+      element.src = dataUrl;
+      // Force metadata fetch for Safari; load() is a no-op elsewhere
+      element.load();
     });
     return { ...baseAsset, ...metadata };
   }

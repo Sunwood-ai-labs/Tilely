@@ -52,7 +52,7 @@ export function EditorShell() {
 
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={60}>
-      <div className="flex h-screen w-full flex-col overflow-hidden">
+      <div className="flex min-h-screen w-full flex-col">
         <TopBar />
         <div className="grid flex-1 grid-cols-[320px_1fr_340px] gap-0 overflow-hidden">
           <aside className="border-r border-border/50 bg-zinc-950/60 backdrop-blur-xl">

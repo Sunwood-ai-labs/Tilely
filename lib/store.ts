@@ -1,0 +1,327 @@
+"use client";
+
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { v4 as uuid } from "uuid";
+import { layoutPresets } from "./presets";
+import { clamp, structuredCloneSafe } from "./utils";
+import {
+  Asset,
+  AssetType,
+  Composition,
+  Project,
+  RenderJob,
+  Track,
+  TimelineClipSelection
+} from "./types";
+
+const PROJECT_VERSION = "2025.04.01";
+
+interface ProjectState {
+  project: Project;
+  selection?: TimelineClipSelection;
+  activeCell?: number;
+  renderJob?: RenderJob;
+  future: Project[];
+  history: Project[];
+  hydrateFromJson: (json: string) => void;
+  resetProject: () => void;
+  addAssets: (files: Asset[]) => void;
+  setProjectTitle: (title: string) => void;
+  assignAssetToCell: (cellIndex: number, assetId: string) => void;
+  updateComposition: (updater: (composition: Composition) => Composition) => void;
+  updateTrack: (trackId: string, updater: (track: Track) => Track) => void;
+  removeTrack: (trackId: string) => void;
+  setSelection: (selection?: TimelineClipSelection) => void;
+  setActiveCell: (cellIndex?: number) => void;
+  applyLayoutPreset: (rows: number, cols: number) => void;
+  updateAudio: (updater: (audio: Project["audio"]) => Project["audio"]) => void;
+  queueRender: (presetId: string, target: RenderJob["target"]) => void;
+  updateRenderProgress: (progress: number, status: RenderJob["status"], outputUrl?: string) => void;
+  saveAsFile: () => void;
+  undo: () => void;
+  redo: () => void;
+}
+
+const createInitialProject = (): Project => {
+  const firstPreset = layoutPresets[0];
+  return {
+    id: uuid(),
+    title: "Untitled Project",
+    assets: [],
+    composition: {
+      id: uuid(),
+      title: "Default Composition",
+      aspectRatio: "1:1",
+      bgColor: "#0f1014",
+      grid: {
+        rows: firstPreset.rows,
+        cols: firstPreset.cols,
+        cells: Array.from({ length: firstPreset.rows * firstPreset.cols }, (_, index) => ({
+          id: uuid(),
+          row: Math.floor(index / firstPreset.cols),
+          col: index % firstPreset.cols
+        }))
+      },
+      style: {
+        gap: 12,
+        padding: 24,
+        radius: 24,
+        borderWidth: 2,
+        borderColor: "#ffffff",
+        borderOpacity: 0.18,
+        backgroundColor: "#10111a"
+      }
+    },
+    tracks: [],
+    audio: {
+      masterGain: 0,
+      muted: false
+    },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    version: PROJECT_VERSION
+  };
+};
+
+const createTrackForAsset = (asset: Asset, cellIndex: number): Track => {
+  const duration = asset.duration ?? 10;
+  return {
+    id: uuid(),
+    assetId: asset.id,
+    cellIndex,
+    in: 0,
+    out: duration,
+    duration,
+    volume: asset.type === "audio" ? 0 : -6,
+    muted: false,
+    fit: "cover",
+    panX: 0,
+    panY: 0,
+    scale: 1
+  };
+};
+
+const cloneProject = (project: Project) => structuredCloneSafe(project);
+
+export const useProjectStore = create<ProjectState>()(
+  persist(
+    (set, get) => ({
+      project: createInitialProject(),
+      selection: undefined,
+      activeCell: undefined,
+      renderJob: undefined,
+      future: [],
+      history: [],
+      hydrateFromJson: (json) => {
+        try {
+          const parsed = JSON.parse(json) as Project;
+          set({ project: parsed, history: [], future: [] });
+        } catch (error) {
+          console.error("Failed to hydrate project", error);
+        }
+      },
+      resetProject: () => set({ project: createInitialProject(), history: [], future: [] }),
+      setProjectTitle: (title) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.title = title;
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      addAssets: (assets) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.assets = [...project.assets, ...assets];
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      assignAssetToCell: (cellIndex, assetId) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          const asset = project.assets.find((item) => item.id === assetId);
+          if (!asset) {
+            return state;
+          }
+          const existingTrack = project.tracks.find((track) => track.cellIndex === cellIndex);
+          if (existingTrack) {
+            existingTrack.assetId = asset.id;
+            existingTrack.duration = asset.duration ?? existingTrack.duration;
+            existingTrack.out = clamp(existingTrack.out, 0, existingTrack.duration);
+          } else {
+            project.tracks.push(createTrackForAsset(asset, cellIndex));
+          }
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      updateComposition: (updater) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.composition = updater(project.composition);
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      updateTrack: (trackId, updater) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.tracks = project.tracks.map((track) =>
+            track.id === trackId ? updater({ ...track }) : track
+          );
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      removeTrack: (trackId) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.tracks = project.tracks.filter((track) => track.id !== trackId);
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      setSelection: (selection) => set({ selection }),
+      setActiveCell: (cellIndex) => set({ activeCell: cellIndex }),
+        applyLayoutPreset: (rows, cols) => {
+          set((state) => {
+            const project = cloneProject(state.project);
+            project.composition.grid = {
+              rows,
+              cols,
+              cells: Array.from({ length: rows * cols }, (_, index) => ({
+                id: uuid(),
+                row: Math.floor(index / cols),
+                col: index % cols
+              }))
+            };
+            project.tracks = project.tracks
+              .map((track) => ({
+                ...track,
+                cellIndex: Math.min(track.cellIndex, rows * cols - 1)
+              }))
+              .filter((track, index, array) =>
+                array.findIndex((item) => item.cellIndex === track.cellIndex) === index
+              );
+            project.updatedAt = Date.now();
+            const nextActiveCell =
+              typeof state.activeCell === "number"
+                ? Math.min(state.activeCell, rows * cols - 1)
+                : state.activeCell;
+            return { project, history: [...state.history, state.project], future: [], activeCell: nextActiveCell };
+          });
+        },
+      updateAudio: (updater) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.audio = updater(project.audio);
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
+      },
+      queueRender: (presetId, target) => {
+        const project = cloneProject(get().project);
+        const renderJob: RenderJob = {
+          id: uuid(),
+          projectId: project.id,
+          presetId,
+          target,
+          progress: 0,
+          status: "queued"
+        };
+        set({ renderJob });
+      },
+      updateRenderProgress: (progress, status, outputUrl) => {
+        set((state) =>
+          state.renderJob
+            ? {
+                renderJob: {
+                  ...state.renderJob,
+                  progress,
+                  status,
+                  outputUrl
+                }
+              }
+            : state
+        );
+      },
+      saveAsFile: () => {
+        const project = get().project;
+        const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${project.title || "tilely-project"}.json`;
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      undo: () => {
+        set((state) => {
+          if (state.history.length === 0) return state;
+          const history = [...state.history];
+          const previous = history.pop()!;
+          return {
+            project: previous,
+            history,
+            future: [state.project, ...state.future]
+          };
+        });
+      },
+      redo: () => {
+        set((state) => {
+          if (state.future.length === 0) return state;
+          const [next, ...rest] = state.future;
+          return {
+            project: next,
+            future: rest,
+            history: [...state.history, state.project]
+          };
+        });
+      }
+    }),
+    {
+      name: "tilely-project",
+      version: 1
+    }
+  )
+);
+
+export async function fileToAsset(file: File, type: AssetType): Promise<Asset> {
+  const url = URL.createObjectURL(file);
+  const baseAsset: Asset = {
+    id: uuid(),
+    name: file.name,
+    type,
+    url,
+    size: file.size,
+    createdAt: Date.now()
+  };
+
+  if (type === "image" || type === "logo") {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.width, height: image.height });
+      image.src = url;
+    });
+    return { ...baseAsset, ...dimensions };
+  }
+
+  if (type === "video" || type === "audio") {
+    const metadata = await new Promise<{ duration: number; width?: number; height?: number }>((resolve) => {
+      const element = document.createElement(type === "audio" ? "audio" : "video");
+      element.preload = "metadata";
+      element.onloadedmetadata = () =>
+        resolve({
+          duration: element.duration,
+          width: element instanceof HTMLVideoElement ? element.videoWidth : undefined,
+          height: element instanceof HTMLVideoElement ? element.videoHeight : undefined
+        });
+      element.src = url;
+    });
+    return { ...baseAsset, ...metadata };
+  }
+
+  return baseAsset;
+}

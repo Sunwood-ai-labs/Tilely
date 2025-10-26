@@ -44,7 +44,7 @@ export function EditorShell() {
       }
     }, 500);
     return () => window.clearInterval(interval);
-  }, [renderJob?.id]);
+  }, [renderJob, updateRenderProgress]);
 
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={60}>

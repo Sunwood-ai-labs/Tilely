@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useProjectStore } from "@/lib/store";
 import { useHotkeys } from "@/lib/use-hotkeys";
 import { toast } from "sonner";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { getExportFileName } from "@/lib/utils";
 
 export function TopBar() {
@@ -18,6 +18,11 @@ export function TopBar() {
   const redo = useProjectStore((state) => state.redo);
   const saveAsFile = useProjectStore((state) => state.saveAsFile);
   const resetProject = useProjectStore((state) => state.resetProject);
+  const ensureUniqueTitle = useProjectStore((state) => state.ensureUniqueTitle);
+
+  useEffect(() => {
+    ensureUniqueTitle();
+  }, [ensureUniqueTitle]);
 
   const handleBrowserImageExport = useCallback(async () => {
     try {

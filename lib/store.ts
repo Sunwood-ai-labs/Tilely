@@ -18,6 +18,18 @@ import { exportProjectToImage } from "./exporter";
 
 const PROJECT_VERSION = "2025.10.01";
 
+const DEFAULT_PROJECT_TITLE = "Project Draft";
+
+const pad = (value: number) => value.toString().padStart(2, "0");
+
+const createTimestampProjectTitle = () => {
+  const now = new Date();
+  const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(
+    now.getMinutes()
+  )}-${pad(now.getSeconds())}`;
+  return `Project ${timestamp}-${now.getTime().toString().slice(-4)}`;
+};
+
 interface ProjectState {
   project: Project;
   selection?: TimelineClipSelection;
@@ -37,6 +49,7 @@ interface ProjectState {
   setActiveCell: (cellIndex?: number) => void;
   applyLayoutPreset: (rows: number, cols: number) => void;
   updateAudio: (updater: (audio: Project["audio"]) => Project["audio"]) => void;
+  ensureUniqueTitle: () => void;
   queueRender: (presetId: string, target: RenderJob["target"]) => Promise<void>;
   updateRenderProgress: (progress: number, status: RenderJob["status"], outputUrl?: string) => void;
   saveAsFile: () => void;
@@ -48,7 +61,7 @@ const createInitialProject = (): Project => {
   const firstPreset = layoutPresets[0];
   return {
     id: uuid(),
-    title: "Untitled Project",
+    title: DEFAULT_PROJECT_TITLE,
     assets: [],
     composition: {
       id: uuid(),
@@ -261,6 +274,21 @@ export const useProjectStore = create<ProjectState>()(
       },
       setSelection: (selection) => set({ selection }),
       setActiveCell: (cellIndex) => set({ activeCell: cellIndex }),
+      ensureUniqueTitle: () => {
+        set((state) => {
+          if (state.project.title !== DEFAULT_PROJECT_TITLE) {
+            return state;
+          }
+          const project = cloneProject(state.project);
+          project.title = createTimestampProjectTitle();
+          project.updatedAt = Date.now();
+          return {
+            project,
+            history: [...state.history, state.project],
+            future: []
+          };
+        });
+      },
         applyLayoutPreset: (rows, cols) => {
           set((state) => {
             const project = cloneProject(state.project);

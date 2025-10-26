@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn, getExportFileName } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { TimelineView } from "@/components/timeline/timeline-view";
 import { PropertiesPanel } from "@/components/panels/properties-panel";
 import { AssetsPanel } from "@/components/panels/assets-panel";
@@ -15,7 +15,6 @@ export function EditorShell() {
   const renderJob = useProjectStore((state) => state.renderJob);
   const updateRenderProgress = useProjectStore((state) => state.updateRenderProgress);
   const lastObjectUrlRef = useRef<string | null>(null);
-  const downloadedJobIdRef = useRef<string | null>(null);
 
   const canvasKey = useMemo(
     () => `${project.composition.id}-${project.composition.grid.rows}x${project.composition.grid.cols}`,
@@ -72,24 +71,6 @@ export function EditorShell() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!renderJob || renderJob.status !== "succeeded" || !renderJob.outputUrl) {
-      return;
-    }
-    if (downloadedJobIdRef.current === renderJob.id) {
-      return;
-    }
-    downloadedJobIdRef.current = renderJob.id;
-    const anchor = document.createElement("a");
-    anchor.href = renderJob.outputUrl;
-    anchor.download = getExportFileName(project.title);
-    anchor.rel = "noopener noreferrer";
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-  }, [project.title, renderJob]);
 
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={60}>

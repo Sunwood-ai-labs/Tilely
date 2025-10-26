@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { v4 as uuid } from "uuid";
 import { layoutPresets } from "./presets";
 import { clamp, structuredCloneSafe } from "./utils";
@@ -15,7 +15,7 @@ import {
   TimelineClipSelection
 } from "./types";
 
-const PROJECT_VERSION = "2025.04.01";
+const PROJECT_VERSION = "2025.10.01";
 
 interface ProjectState {
   project: Project;
@@ -104,8 +104,83 @@ const createTrackForAsset = (asset: Asset, cellIndex: number): Track => {
 
 const cloneProject = (project: Project) => structuredCloneSafe(project);
 
+const isQuotaError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+  const message = (error as Error).message?.toLowerCase?.() ?? "";
+  return (
+    message.includes("quotaexceeded") ||
+    message.includes("quota exceeded") ||
+    message.includes("not enough space") ||
+    (error as DOMException).name === "QuotaExceededError"
+  );
+};
+
+const buildStorage = () => {
+  if (typeof window === "undefined") {
+    return {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {}
+    };
+  }
+
+  return {
+    getItem: (name: string) => {
+      try {
+        const value = window.localStorage.getItem(name);
+        if (value != null) return value;
+      } catch (error) {
+        console.warn("[Tilely] Failed to read localStorage:", error);
+      }
+
+      try {
+        return window.sessionStorage.getItem(name);
+      } catch (error) {
+        console.warn("[Tilely] Failed to read sessionStorage:", error);
+      }
+      return null;
+    },
+    setItem: (name: string, value: string) => {
+      try {
+        window.localStorage.setItem(name, value);
+        return;
+      } catch (error) {
+        if (!isQuotaError(error)) {
+          console.warn("[Tilely] Failed to write localStorage:", error);
+        } else {
+          console.warn(
+            "[Tilely] localStorage quota exceeded. Falling back to sessionStorage for lightweight persistence."
+          );
+        }
+      }
+
+      try {
+        window.sessionStorage.setItem(name, value);
+      } catch (sessionError) {
+        if (!isQuotaError(sessionError)) {
+          console.warn("[Tilely] Failed to write sessionStorage:", sessionError);
+        } else {
+          console.warn("[Tilely] sessionStorage quota exceeded. Persistence temporarily disabled.");
+        }
+      }
+    },
+    removeItem: (name: string) => {
+      try {
+        window.localStorage.removeItem(name);
+      } catch (error) {
+        console.warn("[Tilely] Failed to remove localStorage key:", error);
+      }
+      try {
+        window.sessionStorage.removeItem(name);
+      } catch (error) {
+        console.warn("[Tilely] Failed to remove sessionStorage key:", error);
+      }
+    }
+  };
+};
+
 export const useProjectStore = create<ProjectState>()(
-  persist(
+  persist<ProjectState>(
     (set, get) => ({
       project: createInitialProject(),
       selection: undefined,
@@ -283,7 +358,31 @@ export const useProjectStore = create<ProjectState>()(
     }),
     {
       name: "tilely-project",
-      version: 1
+      version: 2,
+      storage: createJSONStorage(buildStorage),
+      partialize: (state) => ({
+        project: {
+          ...state.project,
+          assets: [],
+          tracks: []
+        },
+        selection: undefined,
+        activeCell: undefined
+      }),
+      migrate: (persistedState, version) => {
+        if (version < 2 && persistedState && typeof persistedState === "object") {
+          const typed = persistedState as Partial<ProjectState>;
+          if (typed.project) {
+            typed.project.assets = [];
+            typed.project.tracks = [];
+          }
+          if (typed.renderJob) {
+            typed.renderJob = undefined;
+          }
+          return typed as ProjectState;
+        }
+        return persistedState as ProjectState;
+      }
     }
   )
 );

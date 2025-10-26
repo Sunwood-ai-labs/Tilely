@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { layoutPresets, aspectRatioPresets } from "@/lib/presets";
 import { useProjectStore } from "@/lib/store";
-import { formatDuration } from "@/lib/utils";
+import { formatDuration, getExportFileName } from "@/lib/utils";
 import { BadgePercent, Blend, Grid3X3 } from "lucide-react";
 
 export function PropertiesPanel() {
@@ -45,6 +45,8 @@ export function PropertiesPanel() {
   const currentAspectRatio = aspectRatioPresets.some((preset) => preset.id === project.composition.aspectRatio)
     ? project.composition.aspectRatio
     : "custom";
+
+  const exportFileName = useMemo(() => getExportFileName(project.title), [project.title]);
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -352,8 +354,8 @@ export function PropertiesPanel() {
                 <Progress value={renderJob.progress} />
                 {renderJob.outputUrl ? (
                   <Button asChild size="sm" variant="outline">
-                    <a href={renderJob.outputUrl} target="_blank" rel="noreferrer">
-                      出力を開く
+                    <a href={renderJob.outputUrl} download={exportFileName}>
+                      出力を保存
                     </a>
                   </Button>
                 ) : (

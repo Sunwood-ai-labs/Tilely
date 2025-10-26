@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, getExportFileName } from "@/lib/utils";
 import { TimelineView } from "@/components/timeline/timeline-view";
 import { PropertiesPanel } from "@/components/panels/properties-panel";
 import { AssetsPanel } from "@/components/panels/assets-panel";
@@ -14,6 +14,8 @@ export function EditorShell() {
   const project = useProjectStore((state) => state.project);
   const renderJob = useProjectStore((state) => state.renderJob);
   const updateRenderProgress = useProjectStore((state) => state.updateRenderProgress);
+  const lastObjectUrlRef = useRef<string | null>(null);
+  const downloadedJobIdRef = useRef<string | null>(null);
 
   const canvasKey = useMemo(
     () => `${project.composition.id}-${project.composition.grid.rows}x${project.composition.grid.cols}`,
@@ -21,7 +23,16 @@ export function EditorShell() {
   );
 
   useEffect(() => {
-    if (!renderJob || (renderJob.status !== "queued" && renderJob.status !== "processing")) {
+    if (!renderJob) {
+      return;
+    }
+
+    if (renderJob.status === "queued" && lastObjectUrlRef.current) {
+      URL.revokeObjectURL(lastObjectUrlRef.current);
+      lastObjectUrlRef.current = null;
+    }
+
+    if (renderJob.status !== "queued" && renderJob.status !== "processing") {
       return;
     }
     let progress = renderJob.progress;
@@ -37,8 +48,11 @@ export function EditorShell() {
       if (progress >= 100) {
         const blob = new Blob(["Tilely export placeholder"], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
+        if (lastObjectUrlRef.current) {
+          URL.revokeObjectURL(lastObjectUrlRef.current);
+        }
+        lastObjectUrlRef.current = url;
         updateRenderProgress(100, "succeeded", url);
-        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         window.clearInterval(interval);
       } else {
         updateRenderProgress(progress, "processing");
@@ -49,6 +63,33 @@ export function EditorShell() {
     }, 500);
     return () => window.clearInterval(interval);
   }, [renderJob, updateRenderProgress]);
+
+  useEffect(() => {
+    return () => {
+      if (lastObjectUrlRef.current) {
+        URL.revokeObjectURL(lastObjectUrlRef.current);
+        lastObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!renderJob || renderJob.status !== "succeeded" || !renderJob.outputUrl) {
+      return;
+    }
+    if (downloadedJobIdRef.current === renderJob.id) {
+      return;
+    }
+    downloadedJobIdRef.current = renderJob.id;
+    const anchor = document.createElement("a");
+    anchor.href = renderJob.outputUrl;
+    anchor.download = getExportFileName(project.title);
+    anchor.rel = "noopener noreferrer";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  }, [project.title, renderJob]);
 
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={60}>
@@ -68,7 +109,7 @@ export function EditorShell() {
               </div>
             </div>
           </main>
-          <aside className={cn("border-l border-border/50 bg-zinc-950/60 backdrop-blur-xl")}> 
+          <aside className={cn("border-l border-border/50 bg-zinc-950/60 backdrop-blur-xl")}>
             <PropertiesPanel />
           </aside>
         </div>

@@ -26,7 +26,11 @@ export function EditorShell() {
     }
     let progress = renderJob.progress;
     let frame = 0;
-    updateRenderProgress(progress, "processing");
+
+    if (renderJob.status === "queued") {
+      updateRenderProgress(progress, "processing");
+    }
+
     const interval = window.setInterval(() => {
       frame += 1;
       progress = Math.min(100, progress + 12);

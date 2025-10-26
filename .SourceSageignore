@@ -55,3 +55,7 @@ venv
 generated-images/
 
 uv.lock
+.next/
+node_modules
+.github/
+pnpm-lock.yaml

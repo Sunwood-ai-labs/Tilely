@@ -5,16 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useProjectStore } from "@/lib/store";
-import { exportPresets } from "@/lib/presets";
 import { useHotkeys } from "@/lib/use-hotkeys";
 import { toast } from "sonner";
-import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Input as NumberInput } from "@/components/ui/input";
+import { useCallback } from "react";
+import { getExportFileName } from "@/lib/utils";
 
 export function TopBar() {
-  const [customExportOpen, setCustomExportOpen] = useState(false);
   const project = useProjectStore((state) => state.project);
   const setProjectTitle = useProjectStore((state) => state.setProjectTitle);
   const queueRender = useProjectStore((state) => state.queueRender);
@@ -23,8 +19,30 @@ export function TopBar() {
   const saveAsFile = useProjectStore((state) => state.saveAsFile);
   const resetProject = useProjectStore((state) => state.resetProject);
 
-  const [customResolution, setCustomResolution] = useState(1080);
-  const [customFps, setCustomFps] = useState(30);
+  const handleBrowserImageExport = useCallback(async () => {
+    try {
+      await queueRender("still-png", "browser");
+      const state = useProjectStore.getState();
+      const job = state.renderJob;
+      if (job?.status === "succeeded" && job.outputUrl) {
+        if (window.isSecureContext) {
+          const anchor = document.createElement("a");
+          anchor.href = job.outputUrl;
+          anchor.download = getExportFileName(state.project.title, "png");
+          anchor.rel = "noopener";
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+        } else {
+          toast.info("HTTPSじゃない環境だと自動DLできないかも。右パネルのリンクから保存してね✨");
+        }
+      }
+      toast.success("合成画像できたよ！右のプロパティ→書き出し状況からも保存できるから安心してね💾💕");
+    } catch (error) {
+      console.error("[Tilely] PNG export failed", error);
+      toast.error("書き出しでコケちゃった…アセットの読み込みを確認してもう一回トライしよ💦");
+    }
+  }, [queueRender]);
 
   useHotkeys({
     "mod+z": undo,
@@ -69,65 +87,19 @@ export function TopBar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onClick={() => handleExportPreset("browser", queueRender)}>
-              ブラウザ即時レンダリング
+            <DropdownMenuItem
+              onSelect={() => {
+                void handleBrowserImageExport();
+              }}
+            >
+              PNG 書き出し（ブラウザ合成）
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleExportPreset("server", queueRender)}>
-              サーバレンダリング
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCustomExportOpen(true)}>
-              カスタムプリセット...
+            <DropdownMenuItem disabled>
+              MP4 レンダリング（近日公開）
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <Dialog open={customExportOpen} onOpenChange={setCustomExportOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>カスタム書き出し</DialogTitle>
-            <DialogDescription>解像度とフレームレートを好みでセットしてね。</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>解像度 (px)</Label>
-              <NumberInput
-                type="number"
-                value={customResolution}
-                onChange={(event) => setCustomResolution(Number(event.target.value) || 1080)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>FPS</Label>
-              <NumberInput
-                type="number"
-                value={customFps}
-                onChange={(event) => setCustomFps(Number(event.target.value) || 30)}
-              />
-            </div>
-          </div>
-          <Button
-            className="w-full"
-            onClick={() => {
-              queueRender("custom", customResolution * customFps > 40000 ? "server" : "browser");
-              toast.success(
-                `カスタム設定で書き出しキュー投入したよ！ ${customResolution}p / ${customFps}fps`
-              );
-              setCustomExportOpen(false);
-            }}
-          >
-            書き出し開始
-          </Button>
-        </DialogContent>
-      </Dialog>
     </header>
   );
-}
-
-function handleExportPreset(
-  target: "browser" | "server",
-  queueRender: (presetId: string, target: "browser" | "server") => void
-) {
-  const preset = exportPresets[target === "browser" ? 0 : 1];
-  queueRender(preset.id, target);
-  toast.success(`${preset.label} でレンダリング開始したよ〜！`);
 }

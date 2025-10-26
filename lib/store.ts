@@ -14,6 +14,7 @@ import {
   Track,
   TimelineClipSelection
 } from "./types";
+import { exportProjectToImage } from "./exporter";
 
 const PROJECT_VERSION = "2025.10.01";
 
@@ -36,7 +37,7 @@ interface ProjectState {
   setActiveCell: (cellIndex?: number) => void;
   applyLayoutPreset: (rows: number, cols: number) => void;
   updateAudio: (updater: (audio: Project["audio"]) => Project["audio"]) => void;
-  queueRender: (presetId: string, target: RenderJob["target"]) => void;
+  queueRender: (presetId: string, target: RenderJob["target"]) => Promise<void>;
   updateRenderProgress: (progress: number, status: RenderJob["status"], outputUrl?: string) => void;
   saveAsFile: () => void;
   undo: () => void;
@@ -296,19 +297,68 @@ export const useProjectStore = create<ProjectState>()(
           return { project, history: [...state.history, state.project], future: [] };
         });
       },
-      queueRender: (presetId, target) => {
+      queueRender: async (presetId, target) => {
         const project = cloneProject(get().project);
-        const renderJob: RenderJob = {
+        const baseJob: RenderJob = {
           id: uuid(),
           projectId: project.id,
           presetId,
           target,
           progress: 0,
-          status: "queued"
+          status: target === "browser" ? "processing" : "queued"
         };
-        set({ renderJob });
+
+        const previousUrl = get().renderJob?.outputUrl;
+        if (previousUrl) {
+          URL.revokeObjectURL(previousUrl);
+        }
+
+        set({ renderJob: baseJob });
+
+        if (target !== "browser") {
+          return;
+        }
+
+        try {
+          set({
+            renderJob: {
+              ...baseJob,
+              status: "processing",
+              progress: 25
+            }
+          });
+
+          const blob = await exportProjectToImage(project);
+          const objectUrl = URL.createObjectURL(blob);
+
+          set({
+            renderJob: {
+              ...baseJob,
+              status: "succeeded",
+              progress: 100,
+              outputUrl: objectUrl
+            }
+          });
+        } catch (error) {
+          console.error("[Tilely] Failed to export project image", error);
+          set({
+            renderJob: {
+              ...baseJob,
+              status: "failed",
+              progress: 0
+            }
+          });
+          if (error instanceof Error) {
+            throw error;
+          }
+          throw new Error("Failed to export image");
+        }
       },
       updateRenderProgress: (progress, status, outputUrl) => {
+        const previousUrl = get().renderJob?.outputUrl;
+        if (previousUrl && outputUrl && previousUrl !== outputUrl) {
+          URL.revokeObjectURL(previousUrl);
+        }
         set((state) =>
           state.renderJob
             ? {
@@ -316,7 +366,7 @@ export const useProjectStore = create<ProjectState>()(
                   ...state.renderJob,
                   progress,
                   status,
-                  outputUrl
+                  outputUrl: outputUrl ?? state.renderJob.outputUrl
                 }
               }
             : state

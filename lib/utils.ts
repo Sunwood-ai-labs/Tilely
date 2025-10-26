@@ -30,8 +30,9 @@ export function structuredCloneSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export function getExportFileName(projectTitle: string | undefined) {
+export function getExportFileName(projectTitle: string | undefined, extension = "png") {
   const base = (projectTitle || "tilely-project").trim().toLowerCase();
   const slug = base.replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  return `${slug || "tilely-project"}-export.txt`;
+  const safeExtension = extension.replace(/^\.+/, "") || "png";
+  return `${slug || "tilely-project"}-export.${safeExtension}`;
 }

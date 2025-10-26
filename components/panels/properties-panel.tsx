@@ -346,25 +346,40 @@ export function PropertiesPanel() {
           <AccordionTrigger className="px-4 py-3 text-sm font-semibold">書き出し状況</AccordionTrigger>
           <AccordionContent className="space-y-3 px-4 pb-4 text-xs text-muted-foreground">
             {renderJob ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="uppercase tracking-[0.18em] text-muted-foreground">{renderJob.presetId}</span>
-                  <span className="font-semibold text-indigo-200">{renderJob.status}</span>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em]">
+                  <span className="text-muted-foreground">{renderJob.presetId}</span>
+                  <span
+                    className={
+                      renderJob.status === "succeeded"
+                        ? "font-semibold text-emerald-200"
+                        : renderJob.status === "failed"
+                          ? "font-semibold text-rose-300"
+                          : "font-semibold text-indigo-200"
+                    }
+                  >
+                    {renderJob.status}
+                  </span>
                 </div>
-                <Progress value={renderJob.progress} />
+                {(renderJob.status === "processing" || renderJob.status === "queued") && (
+                  <Progress value={renderJob.progress} />
+                )}
                 {renderJob.outputUrl ? (
                   <Button asChild size="sm" variant="outline">
                     <a href={renderJob.outputUrl} download={exportFileName}>
-                      出力を保存
+                      PNG を保存
                     </a>
                   </Button>
-                ) : (
-                  <p className="text-[10px] text-muted-foreground">
-                    {renderJob.status === "queued"
-                      ? "順番待ち中だよ、ちょっと待っててね。"
-                      : "エンコード進行中。完了するとここにリンクが表示されるよ。"}
-                  </p>
-                )}
+                ) : null}
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  {renderJob.status === "succeeded"
+                    ? "合成完了！PNG は上のボタン or トップバーからダウンロードできるよ。"
+                    : renderJob.status === "failed"
+                      ? "ごめん、書き出しに失敗しちゃった…。アセットの読み込みや HTTPS 設定をチェックしてみてね。"
+                      : renderJob.target === "server"
+                        ? "サーバーレンダリングは準備中。しばらくしてからまた試してみて！"
+                        : "合成中…セル数が多いとちょっぴり時間がかかるよ〜。"}
+                </p>
               </div>
             ) : (
               <p className="text-[10px] text-muted-foreground">まだ書き出しはスタンバイ状態だよ。</p>

@@ -62,7 +62,7 @@ export function CanvasPreview() {
   } as const;
 
   return (
-    <section className="flex flex-1 flex-col gap-3 overflow-hidden">
+    <section className="flex min-h-[420px] flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           プレビュー
@@ -73,7 +73,7 @@ export function CanvasPreview() {
           <MoveVertical className="h-3 w-3" />
         </div>
       </div>
-      <Card className="relative flex flex-1 items-center justify-center overflow-hidden border border-border/40 bg-zinc-950/80">
+      <Card className="relative flex min-h-[360px] flex-1 items-center justify-center overflow-hidden border border-border/40 bg-zinc-950/80">
         <div ref={containerRef} className="relative flex h-full w-full items-center justify-center">
           <div
             className="relative overflow-hidden"

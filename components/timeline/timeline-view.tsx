@@ -19,7 +19,7 @@ export function TimelineView() {
   const clips = [...project.tracks].sort((a, b) => a.cellIndex - b.cellIndex);
 
   return (
-    <section className="flex min-h-[240px] flex-col rounded-2xl border border-border/50 bg-zinc-950/70 p-4 shadow-inner shadow-black/40">
+    <section className="flex min-h-[260px] shrink-0 flex-col rounded-2xl border border-border/50 bg-zinc-950/70 p-4 shadow-inner shadow-black/40">
       <header className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">タイムライン</h2>

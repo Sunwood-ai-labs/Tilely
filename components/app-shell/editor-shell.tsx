@@ -55,9 +55,13 @@ export function EditorShell() {
             <AssetsPanel />
           </aside>
           <main className="flex min-h-0 flex-col overflow-hidden">
-            <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-6 py-4">
-              <CanvasPreview key={canvasKey} />
-              <TimelineView />
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4">
+              <div className="flex min-h-0 flex-1">
+                <CanvasPreview key={canvasKey} />
+              </div>
+              <div className="mt-4 shrink-0 pb-2">
+                <TimelineView />
+              </div>
             </div>
           </main>
           <aside className={cn("border-l border-border/50 bg-zinc-950/60 backdrop-blur-xl")}> 

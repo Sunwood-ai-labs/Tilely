@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { type CSSProperties, type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useProjectStore } from "@/lib/store";
@@ -148,7 +149,16 @@ function AssetPreview({ trackId }: { trackId: string }) {
   }
 
   if (asset.type === "image" || asset.type === "logo") {
-    return <img src={asset.url} alt={asset.name} className="h-full w-full" style={style} />;
+    return (
+      <Image
+        src={asset.url}
+        alt={asset.name}
+        fill
+        sizes="100%"
+        style={style}
+        unoptimized
+      />
+    );
   }
 
   if (asset.type === "audio") {

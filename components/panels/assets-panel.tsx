@@ -175,7 +175,7 @@ function autoAssignAssetsToCells(assets: Asset[]) {
 
   visualAssets.forEach((asset) => {
     const state = useProjectStore.getState();
-    const cellIndex = determineTargetCell(state.project, state.activeCell);
+    const cellIndex = determineTargetCell(state.project);
     state.assignAssetToCell(cellIndex, asset.id);
     state.setActiveCell(cellIndex);
     placements.push(`セル ${cellIndex + 1}: ${asset.name}`);

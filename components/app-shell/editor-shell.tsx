@@ -54,8 +54,8 @@ export function EditorShell() {
           <aside className="border-r border-border/50 bg-zinc-950/60 backdrop-blur-xl">
             <AssetsPanel />
           </aside>
-          <main className="flex flex-col overflow-hidden">
-            <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
+          <main className="flex min-h-0 flex-col overflow-hidden">
+            <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-6 py-4">
               <CanvasPreview key={canvasKey} />
               <TimelineView />
             </div>

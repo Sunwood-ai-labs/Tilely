@@ -74,6 +74,15 @@ interface ProjectState {
   redo: () => void;
 }
 
+type ProjectPersistedState = {
+  project: ProjectState["project"];
+  selection?: ProjectState["selection"];
+  activeCell?: ProjectState["activeCell"];
+  renderJob?: ProjectState["renderJob"];
+  future?: ProjectState["future"];
+  history?: ProjectState["history"];
+};
+
 const createInitialProject = (): Project => {
   const firstPreset = layoutPresets[0];
   return {
@@ -211,7 +220,7 @@ const buildStorage = () => {
 };
 
 export const useProjectStore = create<ProjectState>()(
-  persist<ProjectState>(
+  persist<ProjectState, [], [], ProjectPersistedState>(
     (set, get) => ({
       project: createInitialProject(),
       selection: undefined,
@@ -486,18 +495,21 @@ export const useProjectStore = create<ProjectState>()(
       name: "tilely-project",
       version: 2,
       storage: createJSONStorage(buildStorage),
-      partialize: (state) => ({
+      partialize: (state): ProjectPersistedState => ({
         project: {
           ...state.project,
           assets: [],
           tracks: []
-        },
-        selection: undefined,
-        activeCell: undefined
+        }
       }),
       migrate: (persistedState, version) => {
-        if (version < 2 && persistedState && typeof persistedState === "object") {
-          const typed = persistedState as Partial<ProjectState>;
+        if (!persistedState || typeof persistedState !== "object") {
+          return { project: createInitialProject() };
+        }
+
+        const typed = persistedState as ProjectPersistedState & Partial<ProjectState>;
+
+        if (version < 2) {
           if (typed.project) {
             typed.project.assets = [];
             typed.project.tracks = [];
@@ -505,9 +517,16 @@ export const useProjectStore = create<ProjectState>()(
           if (typed.renderJob) {
             typed.renderJob = undefined;
           }
-          return typed as ProjectState;
         }
-        return persistedState as ProjectState;
+
+        return {
+          project: typed.project ?? createInitialProject(),
+          selection: typed.selection,
+          activeCell: typed.activeCell,
+          renderJob: version < 2 ? undefined : typed.renderJob,
+          future: typed.future,
+          history: typed.history
+        };
       }
     }
   )

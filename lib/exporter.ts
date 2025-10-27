@@ -1,152 +1,37 @@
-import { type Project, Asset, Track } from "./types";
+import { type Project, Asset } from "./types";
+import {
+  applyRoundedRect,
+  calculateCanvasLayout,
+  drawPlaceholder,
+  drawVisualInCell,
+  getTrackByCell,
+  hexToRgba
+} from "./canvas-utils";
+import { loadImageAsset, type LoadedImage } from "./media-loaders";
 
-const BASE_EXPORT_SIZE = 2048;
-
-type LoadedImage = {
-  element: HTMLImageElement;
-  width: number;
-  height: number;
-};
-
-const loadImage = (asset: Asset): Promise<LoadedImage> => {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => {
-      resolve({
-        element: image,
-        width: image.naturalWidth || image.width,
-        height: image.naturalHeight || image.height
-      });
-    };
-    image.onerror = (error) => reject(error);
-    image.src = asset.url;
-  });
-};
-
-const parseAspectRatio = (value: string) => {
-  const [w, h] = value.split(":").map(Number);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || h === 0) {
-    return { width: 1, height: 1 };
-  }
-  return { width: w, height: h };
-};
-
-const applyRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) => {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-};
-
-const hexToRgba = (hex: string, opacity = 1) => {
-  const normalized = hex.replace("#", "");
-  if (normalized.length !== 6) {
-    return `rgba(255, 255, 255, ${opacity})`;
-  }
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-};
-
-const getTrackByCell = (tracks: Track[]) => {
-  const map = new Map<number, Track>();
-  tracks.forEach((track) => {
-    if (!map.has(track.cellIndex)) {
-      map.set(track.cellIndex, track);
-    }
-  });
-  return map;
-};
-
-const drawPlaceholder = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  type: "audio" | "video"
-) => {
-  const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-  if (type === "audio") {
-    gradient.addColorStop(0, "#1e1a45");
-    gradient.addColorStop(1, "#3a2b7a");
-  } else {
-    gradient.addColorStop(0, "#1a3a45");
-    gradient.addColorStop(1, "#2b7387");
-  }
-  ctx.fillStyle = gradient;
-  ctx.fillRect(x, y, width, height);
-
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.font = `bold ${Math.max(24, Math.round(height * 0.12))}px "Inter", "Helvetica", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(type.toUpperCase(), x + width / 2, y + height / 2);
-};
-
-const drawImageInCell = (
-  ctx: CanvasRenderingContext2D,
-  asset: LoadedImage,
-  track: Track,
-  x: number,
-  y: number,
-  width: number,
-  height: number
-) => {
-  const { element } = asset;
-  const assetWidth = asset.width || element.width;
-  const assetHeight = asset.height || element.height;
-
-  if (!assetWidth || !assetHeight) {
+const EXPORT_LOG_PREFIX = "[image-exporter]";
+const logInfo = (message: string, extra?: unknown) => {
+  if (typeof extra === "undefined") {
+    console.log(`${EXPORT_LOG_PREFIX} ${message}`);
     return;
   }
+  console.log(`${EXPORT_LOG_PREFIX} ${message}`, extra);
+};
 
-  const fitMode = track.fit ?? "cover";
-  const scale = track.scale ?? 1;
-
-  const cellAspect = width / height;
-  const assetAspect = assetWidth / assetHeight;
-
-  let drawWidth: number;
-  let drawHeight: number;
-
-  if (fitMode === "cover") {
-    const factor = Math.max(width / assetWidth, height / assetHeight) * scale;
-    drawWidth = assetWidth * factor;
-    drawHeight = assetHeight * factor;
-  } else {
-    const factor = Math.min(width / assetWidth, height / assetHeight) * scale;
-    drawWidth = assetWidth * factor;
-    drawHeight = assetHeight * factor;
+const logWarn = (message: string, extra?: unknown) => {
+  if (typeof extra === "undefined") {
+    console.warn(`${EXPORT_LOG_PREFIX} ${message}`);
+    return;
   }
+  console.warn(`${EXPORT_LOG_PREFIX} ${message}`, extra);
+};
 
-  const offsetX = track.panX ?? 0;
-  const offsetY = track.panY ?? 0;
-
-  const drawX = x + (width - drawWidth) / 2 + offsetX;
-  const drawY = y + (height - drawHeight) / 2 + offsetY;
-
-  if (fitMode === "contain") {
-    // Ensure the image stays within bounds for contain mode by clipping
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, width, height);
-    ctx.clip();
-    ctx.drawImage(element, drawX, drawY, drawWidth, drawHeight);
-    ctx.restore();
-  } else {
-    ctx.drawImage(element, drawX, drawY, drawWidth, drawHeight);
+const logError = (message: string, extra?: unknown) => {
+  if (typeof extra === "undefined") {
+    console.error(`${EXPORT_LOG_PREFIX} ${message}`);
+    return;
   }
+  console.error(`${EXPORT_LOG_PREFIX} ${message}`, extra);
 };
 
 export async function exportProjectToImage(project: Project): Promise<Blob> {
@@ -154,11 +39,25 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
     throw new Error("Image export is only available in the browser.");
   }
 
-  const { width: aspectWidth, height: aspectHeight } = parseAspectRatio(project.composition.aspectRatio);
-  const maxDimension = Math.max(aspectWidth, aspectHeight);
-  const scaleFactor = BASE_EXPORT_SIZE / maxDimension;
-  const canvasWidth = Math.round(aspectWidth * scaleFactor);
-  const canvasHeight = Math.round(aspectHeight * scaleFactor);
+  logInfo("exportProjectToImage started", {
+    id: project.id,
+    title: project.title,
+    assetCount: project.assets?.length ?? 0,
+    trackCount: project.tracks?.length ?? 0,
+    aspectRatio: project.composition.aspectRatio,
+  });
+
+  const layout = calculateCanvasLayout(project.composition);
+  const {
+    canvasWidth,
+    canvasHeight,
+    padding,
+    gap,
+    innerWidth,
+    innerHeight,
+    cellWidth,
+    cellHeight
+  } = layout;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
@@ -173,18 +72,12 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   const { style, grid } = project.composition;
-  const padding = style.padding ?? 0;
-  const gap = style.gap ?? 0;
-
-  const innerWidth = canvasWidth - padding * 2;
-  const innerHeight = canvasHeight - padding * 2;
-
-  if (innerWidth <= 0 || innerHeight <= 0) {
-    throw new Error("Composition size is too small to render.");
-  }
-
-  const cellWidth = (innerWidth - gap * (grid.cols - 1)) / grid.cols;
-  const cellHeight = (innerHeight - gap * (grid.rows - 1)) / grid.rows;
+  logInfo("Canvas prepared", {
+    canvasWidth: layout.canvasWidth,
+    canvasHeight: layout.canvasHeight,
+    padding: layout.padding,
+    gap: layout.gap,
+  });
 
   const trackByCell = getTrackByCell(project.tracks ?? []);
   const assetById = new Map(project.assets.map((asset) => [asset.id, asset]));
@@ -196,11 +89,16 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
       .map((track) => assetById.get(track.assetId))
       .filter((asset): asset is Asset => Boolean(asset && (asset.type === "image" || asset.type === "logo")))
       .map(async (asset) => {
+        const meta = { assetId: asset.id, assetName: asset.name, url: asset.url };
+        const start = performance.now();
         try {
-          const image = await loadImage(asset);
+          logInfo("Loading image asset", meta);
+          const image = await loadImageAsset(asset);
+          const duration = Math.round(performance.now() - start);
           loadedImages.set(asset.id, image);
+          logInfo("Image asset loaded", { ...meta, durationMs: duration, width: image.width, height: image.height });
         } catch (error) {
-          console.warn("[Tilely] Failed to load asset for export:", asset?.name ?? asset?.id, error);
+          logWarn("Failed to load asset for export", { ...meta, error });
         }
       })
   );
@@ -227,9 +125,23 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
     const asset = track ? assetById.get(track.assetId) : undefined;
 
     if (asset) {
+      logInfo("Rendering cell", {
+        cellIndex: index,
+        assetId: asset.id,
+        assetType: asset.type,
+        trackId: track?.id,
+      });
       if ((asset.type === "image" || asset.type === "logo") && loadedImages.has(asset.id)) {
         const image = loadedImages.get(asset.id)!;
-        drawImageInCell(ctx, image, track!, x, y, cellWidth, cellHeight);
+        drawVisualInCell(
+          ctx,
+          { element: image.element, width: image.width, height: image.height },
+          track!,
+          x,
+          y,
+          cellWidth,
+          cellHeight
+        );
       } else if (asset.type === "video") {
         drawPlaceholder(ctx, x, y, cellWidth, cellHeight, "video");
       } else if (asset.type === "audio") {
@@ -238,6 +150,7 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
     } else {
       ctx.fillStyle = "rgba(255,255,255,0.06)";
       ctx.fillRect(x, y, cellWidth, cellHeight);
+      logWarn("Cell rendered without asset", { cellIndex: index });
     }
 
     ctx.restore();
@@ -261,13 +174,19 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
     ctx.restore();
   }
 
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Failed to export canvas to blob."));
-      } else {
-        resolve(blob);
-      }
-    }, "image/png");
-  });
+  try {
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), "image/png");
+    });
+
+    if (!blob) {
+      throw new Error("Failed to export canvas to blob.");
+    }
+
+    logInfo("exportProjectToImage finished", { blobSize: blob.size, mimeType: blob.type });
+    return blob;
+  } catch (error) {
+    logError("exportProjectToImage failed", error);
+    throw error;
+  }
 }

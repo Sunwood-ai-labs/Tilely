@@ -376,7 +376,7 @@ export function PropertiesPanel() {
                 ) : null}
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                   {renderJob.status === "succeeded"
-                    ? `${renderJob.fileExtension === "mp4" ? "MP4" : "PNG"}は上のボタンとトップバーからダウンロードできるよ。`
+                    ? `${(renderJob.fileExtension ?? "file").toUpperCase()}は上のボタンとトップバーからダウンロードできるよ。`
                     : renderJob.status === "failed"
                       ? "ごめん、書き出しに失敗しちゃった…。アセットの読み込みや HTTPS 設定をチェックしてみてね。"
                       : renderJob.target === "server"

@@ -377,23 +377,43 @@ export const useProjectStore = create<ProjectState>()(
           set({ renderJob: workingJob });
 
           let blob: Blob;
+          let resolvedMimeType = meta.mimeType;
+          let resolvedExtension = meta.extension;
+          let resolvedLabel = meta.label;
+
           if (meta.extension === "mp4") {
             workingJob = { ...workingJob, progress: 45 };
             set({ renderJob: workingJob });
-            blob = await exportProjectToMp4(project);
+            const result = await exportProjectToMp4(project);
+            blob = result.blob;
+            resolvedMimeType = result.mimeType;
+            resolvedExtension = result.fileExtension;
+            resolvedLabel = `${resolvedExtension.toUpperCase()} を保存`;
+            workingJob = {
+              ...workingJob,
+              mimeType: resolvedMimeType,
+              fileExtension: resolvedExtension,
+              downloadLabel: resolvedLabel
+            };
+            set({ renderJob: workingJob });
           } else {
             blob = await exportProjectToImage(project);
           }
 
           const objectUrl = URL.createObjectURL(blob);
 
+          const finalJob: RenderJob = {
+            ...baseJob,
+            mimeType: resolvedMimeType,
+            fileExtension: resolvedExtension,
+            downloadLabel: resolvedLabel,
+            status: "succeeded",
+            progress: 100,
+            outputUrl: objectUrl
+          };
+
           set({
-            renderJob: {
-              ...baseJob,
-              status: "succeeded",
-              progress: 100,
-              outputUrl: objectUrl
-            }
+            renderJob: finalJob
           });
         } catch (error) {
           console.error("[Tilely] Failed to export project", error);

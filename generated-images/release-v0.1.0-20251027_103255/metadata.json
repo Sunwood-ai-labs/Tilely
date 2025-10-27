@@ -1,0 +1,17 @@
+{
+  "generation_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "prompt": "Minimalist cartoon line art character reference sheet. 
+Clean bold lines, vector-style strokes, mostly black and white with flat ice blue accent color. 
+Character: a round penguin plush with stubby wings and soft belly. 
+Outfit: a cozy knitted beanie and a scarf with pom-poms. 
+Sheet layout includes one full-body pose and expressions: waddling, sliding on belly, waving flipper, hugging snowball, looking up, clapping wings. 
+Flat modern aesthetic, consistent visual style, clean background.
+Place “Tilely - v0\.1\.0 -” in elegant cursive serif lettering below the penguin, as if it were a brand signature, maintaining a clean and modern composition.",
+  "model": "imagen-4-ultra",
+  "num_images": 1,
+  "aspect_ratio": "16:9",
+  "seed": "",
+  "workflow_run": "1",
+  "commit_sha": "972d503468671a5142c1fd02a71ca23db5bb31ec",
+  "tag": "v0.1.0"
+}

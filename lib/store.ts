@@ -15,10 +15,27 @@ import {
   TimelineClipSelection
 } from "./types";
 import { exportProjectToImage } from "./exporter";
+import { exportProjectToMp4 } from "./video-exporter";
 
 const PROJECT_VERSION = "2025.10.01";
 
 const DEFAULT_PROJECT_TITLE = "Project Draft";
+
+const DEFAULT_RENDER_META = {
+  mimeType: "image/png",
+  extension: "png",
+  label: "PNG を保存"
+};
+
+const RENDER_PRESET_META: Record<string, typeof DEFAULT_RENDER_META> = {
+  "video-mp4": {
+    mimeType: "video/mp4",
+    extension: "mp4",
+    label: "MP4 を保存"
+  }
+};
+
+const getRenderMeta = (presetId: string) => RENDER_PRESET_META[presetId] ?? DEFAULT_RENDER_META;
 
 const pad = (value: number) => value.toString().padStart(2, "0");
 
@@ -327,13 +344,17 @@ export const useProjectStore = create<ProjectState>()(
       },
       queueRender: async (presetId, target) => {
         const project = cloneProject(get().project);
+        const meta = getRenderMeta(presetId);
         const baseJob: RenderJob = {
           id: uuid(),
           projectId: project.id,
           presetId,
           target,
           progress: 0,
-          status: target === "browser" ? "processing" : "queued"
+          status: target === "browser" ? "processing" : "queued",
+          mimeType: meta.mimeType,
+          fileExtension: meta.extension,
+          downloadLabel: meta.label
         };
 
         const previousUrl = get().renderJob?.outputUrl;
@@ -348,15 +369,22 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         try {
-          set({
-            renderJob: {
-              ...baseJob,
-              status: "processing",
-              progress: 25
-            }
-          });
+          let workingJob: RenderJob = {
+            ...baseJob,
+            status: "processing",
+            progress: 20
+          };
+          set({ renderJob: workingJob });
 
-          const blob = await exportProjectToImage(project);
+          let blob: Blob;
+          if (meta.extension === "mp4") {
+            workingJob = { ...workingJob, progress: 45 };
+            set({ renderJob: workingJob });
+            blob = await exportProjectToMp4(project);
+          } else {
+            blob = await exportProjectToImage(project);
+          }
+
           const objectUrl = URL.createObjectURL(blob);
 
           set({
@@ -368,7 +396,7 @@ export const useProjectStore = create<ProjectState>()(
             }
           });
         } catch (error) {
-          console.error("[Tilely] Failed to export project image", error);
+          console.error("[Tilely] Failed to export project", error);
           set({
             renderJob: {
               ...baseJob,
@@ -379,7 +407,7 @@ export const useProjectStore = create<ProjectState>()(
           if (error instanceof Error) {
             throw error;
           }
-          throw new Error("Failed to export image");
+          throw new Error("Failed to export project");
         }
       },
       updateRenderProgress: (progress, status, outputUrl) => {

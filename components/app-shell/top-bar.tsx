@@ -24,30 +24,42 @@ export function TopBar() {
     ensureUniqueTitle();
   }, [ensureUniqueTitle]);
 
-  const handleBrowserImageExport = useCallback(async () => {
-    try {
-      await queueRender("still-png", "browser");
-      const state = useProjectStore.getState();
-      const job = state.renderJob;
-      if (job?.status === "succeeded" && job.outputUrl) {
-        if (window.isSecureContext) {
-          const anchor = document.createElement("a");
-          anchor.href = job.outputUrl;
-          anchor.download = getExportFileName(state.project.title, "png");
-          anchor.rel = "noopener";
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-        } else {
-          toast.info("HTTPSじゃない環境だと自動DLできないかも。右パネルのリンクから保存してね✨");
+  const handleExport = useCallback(
+    async (presetId: string) => {
+      try {
+        await queueRender(presetId, "browser");
+        const state = useProjectStore.getState();
+        const job = state.renderJob;
+        if (!job) {
+          throw new Error("render job missing after export");
         }
+
+        const extension = job.fileExtension ?? "bin";
+        const artifactLabel = job.fileExtension === "mp4" ? "MP4" : job.fileExtension === "png" ? "PNG" : "ファイル";
+
+        if (job.status === "succeeded" && job.outputUrl) {
+          if (window.isSecureContext) {
+            const anchor = document.createElement("a");
+            anchor.href = job.outputUrl;
+            anchor.download = getExportFileName(state.project.title, extension);
+            anchor.rel = "noopener";
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+          } else {
+            toast.info(`${artifactLabel}は手動で保存してね。右パネルのリンクからアクセスできるよ✨`);
+          }
+          toast.success(`${artifactLabel}の準備ができたよ！右のプロパティ→書き出し状況からも保存できるから安心してね💾💕`);
+        } else {
+          toast.error("書き出しが完了しなかったみたい…もう一度トライしよ💦");
+        }
+      } catch (error) {
+        console.error("[Tilely] export failed", error);
+        toast.error("書き出しでコケちゃった…アセットの読み込みを確認してもう一回トライしよ💦");
       }
-      toast.success("合成画像できたよ！右のプロパティ→書き出し状況からも保存できるから安心してね💾💕");
-    } catch (error) {
-      console.error("[Tilely] PNG export failed", error);
-      toast.error("書き出しでコケちゃった…アセットの読み込みを確認してもう一回トライしよ💦");
-    }
-  }, [queueRender]);
+    },
+    [queueRender]
+  );
 
   useHotkeys({
     "mod+z": undo,
@@ -94,13 +106,17 @@ export function TopBar() {
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuItem
               onSelect={() => {
-                void handleBrowserImageExport();
+                void handleExport("still-png");
               }}
             >
               PNG 書き出し（ブラウザ合成）
             </DropdownMenuItem>
-            <DropdownMenuItem disabled>
-              MP4 レンダリング（近日公開）
+            <DropdownMenuItem
+              onSelect={() => {
+                void handleExport("video-mp4");
+              }}
+            >
+              MP4 レンダリング（ブラウザ合成）
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -24,6 +24,15 @@ export const aspectRatioPresets = [
 
 export const exportPresets: ExportPreset[] = [
   {
+    id: "video-mp4",
+    label: "MP4 Video",
+    resolution: 1080,
+    fps: 30,
+    videoCodec: "MPEG4",
+    audioCodec: "AAC",
+    description: "静止画ベースの簡易MP4出力"
+  },
+  {
     id: "social-1080p",
     label: "Social 1080p",
     resolution: 1080,

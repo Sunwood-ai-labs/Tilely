@@ -98,6 +98,9 @@ export interface RenderJob {
   progress: number;
   status: "idle" | "queued" | "processing" | "succeeded" | "failed";
   outputUrl?: string;
+  mimeType?: string;
+  fileExtension?: string;
+  downloadLabel?: string;
 }
 
 export interface TimelineClipSelection {

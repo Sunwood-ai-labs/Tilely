@@ -46,7 +46,10 @@ export function PropertiesPanel() {
     ? project.composition.aspectRatio
     : "custom";
 
-  const exportFileName = useMemo(() => getExportFileName(project.title), [project.title]);
+  const exportFileName = useMemo(
+    () => getExportFileName(project.title, renderJob?.fileExtension ?? "png"),
+    [project.title, renderJob?.fileExtension]
+  );
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -367,13 +370,13 @@ export function PropertiesPanel() {
                 {renderJob.outputUrl ? (
                   <Button asChild size="sm" variant="outline">
                     <a href={renderJob.outputUrl} download={exportFileName}>
-                      PNG を保存
+                      {renderJob.downloadLabel ?? "ファイルを保存"}
                     </a>
                   </Button>
                 ) : null}
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                   {renderJob.status === "succeeded"
-                    ? "合成完了！PNG は上のボタン or トップバーからダウンロードできるよ。"
+                    ? `${renderJob.fileExtension === "mp4" ? "MP4" : "PNG"}は上のボタンとトップバーからダウンロードできるよ。`
                     : renderJob.status === "failed"
                       ? "ごめん、書き出しに失敗しちゃった…。アセットの読み込みや HTTPS 設定をチェックしてみてね。"
                       : renderJob.target === "server"

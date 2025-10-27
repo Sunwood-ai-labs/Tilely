@@ -5,6 +5,10 @@ import type { Project, Asset, Track } from "./types";
 type ExportOptions = {
   durationSeconds?: number;
   fps?: number;
+  videoBitrateMbps?: number;
+  videoBitsPerSecond?: number;
+  audioBitrateKbps?: number;
+  audioBitsPerSecond?: number;
 };
 
 export type VideoExportResult = {
@@ -13,7 +17,7 @@ export type VideoExportResult = {
   fileExtension: string;
 };
 
-const DEFAULT_OPTIONS: Required<ExportOptions> = {
+const DEFAULT_OPTIONS: { durationSeconds: number; fps: number } = {
   durationSeconds: 3,
   fps: 30
 };
@@ -375,6 +379,23 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     .map((state) => state.video?.element)
     .filter((video): video is HTMLVideoElement => Boolean(video));
 
+  const videoTrackCount = cellStates.filter((cell) => cell.asset?.type === "video").length || playableVideos.length;
+
+  let videoBitsPerSecond =
+    options.videoBitsPerSecond ??
+    (options.videoBitrateMbps ? Math.round(options.videoBitrateMbps * 1_000_000) : undefined);
+  if (!videoBitsPerSecond || !Number.isFinite(videoBitsPerSecond) || videoBitsPerSecond <= 0) {
+    const basePerTrack = 5_000_000;
+    videoBitsPerSecond = basePerTrack * Math.max(1, videoTrackCount);
+  }
+
+  let audioBitsPerSecond =
+    options.audioBitsPerSecond ??
+    (options.audioBitrateKbps ? Math.round(options.audioBitrateKbps * 1_000) : undefined);
+  if (!audioBitsPerSecond || !Number.isFinite(audioBitsPerSecond) || audioBitsPerSecond <= 0) {
+    audioBitsPerSecond = 192_000;
+  }
+
   await Promise.all(
     playableVideos.map(async (video, index) => {
       try {
@@ -388,10 +409,22 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   );
 
   const { mimeType, extension } = pickMediaType();
-  logInfo("MediaRecorder configuration chosen", { mimeType, extension });
+  const recorderOptions: MediaRecorderOptions = { mimeType };
+  if (Number.isFinite(videoBitsPerSecond) && videoBitsPerSecond > 0) {
+    recorderOptions.videoBitsPerSecond = Math.round(videoBitsPerSecond);
+  }
+  if (Number.isFinite(audioBitsPerSecond) && audioBitsPerSecond > 0) {
+    recorderOptions.audioBitsPerSecond = Math.round(audioBitsPerSecond);
+  }
+  logInfo("MediaRecorder configuration chosen", {
+    mimeType,
+    extension,
+    videoBitsPerSecond: recorderOptions.videoBitsPerSecond,
+    audioBitsPerSecond: recorderOptions.audioBitsPerSecond
+  });
 
   const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, { mimeType });
+  const recorder = new MediaRecorder(stream, recorderOptions);
 
   const chunks: BlobPart[] = [];
   const recordingPromise = new Promise<Blob>((resolve, reject) => {
@@ -449,6 +482,8 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     durationSeconds,
     fps,
     framesRendered,
+    videoBitsPerSecond: recorderOptions.videoBitsPerSecond,
+    audioBitsPerSecond: recorderOptions.audioBitsPerSecond,
     blobSize: blob.size,
     mimeType: blob.type,
     elapsedMs: Math.round(now() - startedAt)

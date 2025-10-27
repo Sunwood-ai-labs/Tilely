@@ -107,3 +107,10 @@ export interface TimelineClipSelection {
   trackId: string;
   cellIndex: number;
 }
+
+export interface ExportSettings {
+  fps: number;
+  durationSeconds: number;
+  videoBitrateMbps: number;
+  audioBitrateKbps: number;
+}

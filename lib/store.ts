@@ -9,6 +9,7 @@ import {
   Asset,
   AssetType,
   Composition,
+  ExportSettings,
   Project,
   RenderJob,
   Track,
@@ -37,6 +38,13 @@ const RENDER_PRESET_META: Record<string, typeof DEFAULT_RENDER_META> = {
 
 const getRenderMeta = (presetId: string) => RENDER_PRESET_META[presetId] ?? DEFAULT_RENDER_META;
 
+const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+  fps: 30,
+  durationSeconds: 8,
+  videoBitrateMbps: 20,
+  audioBitrateKbps: 192
+};
+
 const pad = (value: number) => value.toString().padStart(2, "0");
 
 const createTimestampProjectTitle = () => {
@@ -54,6 +62,7 @@ interface ProjectState {
   renderJob?: RenderJob;
   future: Project[];
   history: Project[];
+  exportSettings: ExportSettings;
   hydrateFromJson: (json: string) => void;
   resetProject: () => void;
   addAssets: (files: Asset[]) => void;
@@ -66,6 +75,7 @@ interface ProjectState {
   setActiveCell: (cellIndex?: number) => void;
   applyLayoutPreset: (rows: number, cols: number) => void;
   updateAudio: (updater: (audio: Project["audio"]) => Project["audio"]) => void;
+  updateExportSettings: (updater: (settings: ExportSettings) => ExportSettings) => void;
   ensureUniqueTitle: () => void;
   queueRender: (presetId: string, target: RenderJob["target"]) => Promise<void>;
   updateRenderProgress: (progress: number, status: RenderJob["status"], outputUrl?: string) => void;
@@ -78,6 +88,7 @@ type ProjectPersistedState = {
   project: ProjectState["project"];
   selection?: ProjectState["selection"];
   activeCell?: ProjectState["activeCell"];
+  exportSettings?: ProjectState["exportSettings"];
   renderJob?: ProjectState["renderJob"];
   future?: ProjectState["future"];
   history?: ProjectState["history"];
@@ -223,6 +234,7 @@ export const useProjectStore = create<ProjectState>()(
   persist<ProjectState, [], [], ProjectPersistedState>(
     (set, get) => ({
       project: createInitialProject(),
+      exportSettings: DEFAULT_EXPORT_SETTINGS,
       selection: undefined,
       activeCell: undefined,
       renderJob: undefined,
@@ -351,6 +363,11 @@ export const useProjectStore = create<ProjectState>()(
           return { project, history: [...state.history, state.project], future: [] };
         });
       },
+      updateExportSettings: (updater) => {
+        set((state) => ({
+          exportSettings: updater({ ...state.exportSettings })
+        }));
+      },
       queueRender: async (presetId, target) => {
         const project = cloneProject(get().project);
         const meta = getRenderMeta(presetId);
@@ -378,6 +395,7 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         try {
+          const exportSettings = get().exportSettings;
           let workingJob: RenderJob = {
             ...baseJob,
             status: "processing",
@@ -393,7 +411,12 @@ export const useProjectStore = create<ProjectState>()(
           if (meta.extension === "mp4") {
             workingJob = { ...workingJob, progress: 45 };
             set({ renderJob: workingJob });
-            const result = await exportProjectToMp4(project);
+            const result = await exportProjectToMp4(project, {
+              durationSeconds: exportSettings.durationSeconds,
+              fps: exportSettings.fps,
+              videoBitrateMbps: exportSettings.videoBitrateMbps,
+              audioBitrateKbps: exportSettings.audioBitrateKbps
+            });
             blob = result.blob;
             resolvedMimeType = result.mimeType;
             resolvedExtension = result.fileExtension;
@@ -500,11 +523,12 @@ export const useProjectStore = create<ProjectState>()(
           ...state.project,
           assets: [],
           tracks: []
-        }
+        },
+        exportSettings: state.exportSettings
       }),
       migrate: (persistedState, version) => {
         if (!persistedState || typeof persistedState !== "object") {
-          return { project: createInitialProject() };
+          return { project: createInitialProject(), exportSettings: DEFAULT_EXPORT_SETTINGS };
         }
 
         const typed = persistedState as ProjectPersistedState & Partial<ProjectState>;
@@ -525,7 +549,8 @@ export const useProjectStore = create<ProjectState>()(
           activeCell: typed.activeCell,
           renderJob: version < 2 ? undefined : typed.renderJob,
           future: typed.future,
-          history: typed.history
+          history: typed.history,
+          exportSettings: typed.exportSettings ?? DEFAULT_EXPORT_SETTINGS
         };
       }
     }

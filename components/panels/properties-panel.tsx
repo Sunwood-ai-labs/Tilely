@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { layoutPresets, aspectRatioPresets } from "@/lib/presets";
 import { useProjectStore } from "@/lib/store";
-import { formatDuration, getExportFileName } from "@/lib/utils";
+import { clamp, formatDuration, getExportFileName } from "@/lib/utils";
 import { BadgePercent, Blend, Grid3X3 } from "lucide-react";
 
 export function PropertiesPanel() {
@@ -20,6 +20,8 @@ export function PropertiesPanel() {
   const applyLayoutPreset = useProjectStore((state) => state.applyLayoutPreset);
   const updateTrack = useProjectStore((state) => state.updateTrack);
   const updateAudio = useProjectStore((state) => state.updateAudio);
+  const exportSettings = useProjectStore((state) => state.exportSettings);
+  const updateExportSettings = useProjectStore((state) => state.updateExportSettings);
   const renderJob = useProjectStore((state) => state.renderJob);
   const activeCell = useProjectStore((state) => state.activeCell);
 
@@ -50,6 +52,13 @@ export function PropertiesPanel() {
     () => getExportFileName(project.title, renderJob?.fileExtension ?? "png"),
     [project.title, renderJob?.fileExtension]
   );
+
+  const handleExportSettingChange = (key: keyof typeof exportSettings, value: number) => {
+    updateExportSettings((current) => ({
+      ...current,
+      [key]: value
+    }));
+  };
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -343,6 +352,76 @@ export function PropertiesPanel() {
             <p className="text-[10px] text-muted-foreground">
               BGM トラックは音量 -6dB で追加されるよ。今後フェード機能も実装予定！
             </p>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="export-settings" className="rounded-2xl border border-border/50 bg-zinc-950/60">
+          <AccordionTrigger className="px-4 py-3 text-sm font-semibold">書き出し設定</AccordionTrigger>
+          <AccordionContent className="space-y-4 px-4 pb-4 text-xs text-muted-foreground">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em]">
+                <span>フレームレート</span>
+                <span className="font-mono text-xs text-indigo-200">{exportSettings.fps} fps</span>
+              </div>
+              <Slider
+                value={[exportSettings.fps]}
+                min={10}
+                max={60}
+                step={1}
+                onValueChange={(values) => handleExportSettingChange("fps", values[0])}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="export-duration">尺 (秒)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="export-duration"
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={exportSettings.durationSeconds}
+                  onChange={(event) =>
+                    handleExportSettingChange("durationSeconds", clamp(Number(event.target.value) || 0, 1, 600))
+                  }
+                />
+                <span className="text-[10px] text-muted-foreground">秒</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="export-video-bitrate">動画ビットレート</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="export-video-bitrate"
+                  type="number"
+                  min={5}
+                  max={200}
+                  value={exportSettings.videoBitrateMbps}
+                  onChange={(event) =>
+                    handleExportSettingChange("videoBitrateMbps", clamp(Number(event.target.value) || 0, 5, 500))
+                  }
+                />
+                <span className="text-[10px] text-muted-foreground">Mbps</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                4K タイルは 20Mbps 以上が推し。値を上げるほど容量もアップするよ。
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="export-audio-bitrate">音声ビットレート</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="export-audio-bitrate"
+                  type="number"
+                  min={64}
+                  max={320}
+                  step={16}
+                  value={exportSettings.audioBitrateKbps}
+                  onChange={(event) =>
+                    handleExportSettingChange("audioBitrateKbps", clamp(Number(event.target.value) || 0, 32, 512))
+                  }
+                />
+                <span className="text-[10px] text-muted-foreground">kbps</span>
+              </div>
+            </div>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="render" className="rounded-2xl border border-border/50 bg-zinc-950/60">

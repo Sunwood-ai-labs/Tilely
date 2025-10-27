@@ -12,7 +12,6 @@ __pycache__/
 node_modules/
 .pnp/
 .pnp.js
-pnpm-lock.yaml
 package-lock.json
 yarn.lock
 pnpm-debug.log*

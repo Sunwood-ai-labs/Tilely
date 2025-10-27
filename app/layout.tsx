@@ -7,10 +7,7 @@ export const metadata: Metadata = {
   description:
     "Tilelyは動画と画像をタイル状に並べて高速にコラージュを生成する、クリエイター向けのマルチモーダル編集スタジオです。",
   icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/icon.png", type: "image/png", sizes: "256x256" }
-    ]
+    icon: "favicon.svg"
   }
 };
 

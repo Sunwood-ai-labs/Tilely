@@ -53,12 +53,29 @@ const logError = (message: string, extra?: unknown) => {
   console.error(`${LOG_PREFIX} ${message}`, extra);
 };
 
+type ExtendedCanvasLayout = ReturnType<typeof calculateCanvasLayout> & {
+  columnWidths: number[];
+  rowHeights: number[];
+};
+
 type CellRenderState = {
   index: number;
+  row: number;
+  col: number;
   x: number;
   y: number;
   width: number;
   height: number;
+  track?: Track;
+  asset?: Asset;
+  image?: LoadedImage;
+  video?: LoadedVideo;
+};
+
+type CellMedia = {
+  index: number;
+  row: number;
+  col: number;
   track?: Track;
   asset?: Asset;
   image?: LoadedImage;
@@ -139,12 +156,7 @@ const drawCellFrame = (ctx: CanvasRenderingContext2D, state: CellRenderState, st
   }
 };
 
-const renderFrame = (
-  ctx: CanvasRenderingContext2D,
-  project: Project,
-  layout: ReturnType<typeof calculateCanvasLayout>,
-  cells: CellRenderState[]
-) => {
+const renderFrame = (ctx: CanvasRenderingContext2D, project: Project, layout: ExtendedCanvasLayout, cells: CellRenderState[]) => {
   ctx.clearRect(0, 0, layout.canvasWidth, layout.canvasHeight);
   ctx.fillStyle = project.composition.bgColor ?? "#111";
   ctx.fillRect(0, 0, layout.canvasWidth, layout.canvasHeight);
@@ -178,7 +190,22 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   }
 
   const startedAt = now();
-  const { durationSeconds, fps } = { ...DEFAULT_OPTIONS, ...options };
+  const assetById = new Map(project.assets.map((asset) => [asset.id, asset]));
+
+  const trackDurations = project.tracks
+    .map((track) => track.duration ?? assetById.get(track.assetId)?.duration ?? 0)
+    .filter((value): value is number => Number.isFinite(value) && value > 0);
+  const assetFps = project.tracks
+    .map((track) => assetById.get(track.assetId)?.fps ?? 0)
+    .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+  const durationSeconds =
+    options.durationSeconds ??
+    (trackDurations.length ? Math.max(DEFAULT_OPTIONS.durationSeconds, ...trackDurations) : DEFAULT_OPTIONS.durationSeconds);
+  const fps =
+    options.fps ??
+    (assetFps.length ? Math.min(60, Math.max(DEFAULT_OPTIONS.fps, ...assetFps)) : DEFAULT_OPTIONS.fps);
+
   logInfo("exportProjectToMp4 started", { durationSeconds, fps });
   logInfo("Project snapshot", {
     id: project.id,
@@ -189,12 +216,12 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     aspectRatio: project.composition.aspectRatio
   });
 
-  const layout = calculateCanvasLayout(project.composition);
-  logInfo("Canvas layout calculated", layout);
+  const baseLayout = calculateCanvasLayout(project.composition);
+  logInfo("Initial canvas layout", baseLayout);
 
   const canvas = document.createElement("canvas");
-  canvas.width = layout.canvasWidth;
-  canvas.height = layout.canvasHeight;
+  canvas.width = baseLayout.canvasWidth;
+  canvas.height = baseLayout.canvasHeight;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) {
@@ -202,57 +229,147 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   }
 
   const trackByCell = getTrackByCell(project.tracks ?? []);
-  const assetById = new Map(project.assets.map((asset) => [asset.id, asset]));
+  const grid = project.composition.grid;
 
-  const cellStates: CellRenderState[] = await Promise.all(
-    project.composition.grid.cells.map(async (cell, index) => {
-      const x = layout.padding + cell.col * (layout.cellWidth + layout.gap);
-      const y = layout.padding + cell.row * (layout.cellHeight + layout.gap);
-
+  const cellMedia: CellMedia[] = await Promise.all(
+    grid.cells.map(async (cell, index) => {
       const track = trackByCell.get(index);
       const asset = track ? assetById.get(track.assetId) : undefined;
-      const baseState: CellRenderState = {
+
+      const base: CellMedia = {
         index,
-        x,
-        y,
-        width: layout.cellWidth,
-        height: layout.cellHeight,
+        row: cell.row,
+        col: cell.col,
         track,
         asset
       };
 
       if (!asset) {
-        return baseState;
+        return base;
       }
 
+      const meta = { assetId: asset.id, assetName: asset.name, url: asset.url, cellIndex: index };
+
       if (asset.type === "video") {
-        const meta = { assetId: asset.id, assetName: asset.name, url: asset.url, cellIndex: index };
         try {
           logInfo("Loading video asset", meta);
           const video = await loadVideoAsset(asset);
           logInfo("Video asset loaded", { ...meta, width: video.width, height: video.height, duration: video.duration });
-          return { ...baseState, video };
+          return { ...base, video };
         } catch (error) {
           logWarn("Failed to load video asset", { ...meta, error });
-          return baseState;
+          return base;
         }
       }
 
       if (asset.type === "image" || asset.type === "logo") {
-        const meta = { assetId: asset.id, assetName: asset.name, url: asset.url, cellIndex: index };
         try {
+          logInfo("Loading image asset", meta);
           const image = await loadImageAsset(asset);
-          logInfo("Image asset loaded for video export", { ...meta, width: image.width, height: image.height });
-          return { ...baseState, image };
+          logInfo("Image asset loaded", { ...meta, width: image.width, height: image.height });
+          return { ...base, image };
         } catch (error) {
-          logWarn("Failed to load image asset for video export", { ...meta, error });
-          return baseState;
+          logWarn("Failed to load image asset", { ...meta, error });
+          return base;
         }
       }
 
-      return baseState;
+      return base;
     })
   );
+
+  const columnWidths = Array.from({ length: grid.cols }, () => baseLayout.cellWidth);
+  const rowHeights = Array.from({ length: grid.rows }, () => baseLayout.cellHeight);
+
+  const collectPositive = (values: Array<number | undefined>) =>
+    values.filter((value): value is number => Number.isFinite(value) && value > 0);
+
+  cellMedia.forEach((cell) => {
+    const scale = cell.track?.scale ?? 1;
+    const widthCandidates = collectPositive([
+      cell.video?.element.videoWidth,
+      cell.video?.width,
+      cell.image?.width,
+      cell.asset?.width
+    ]).map((value) => value * scale);
+    const heightCandidates = collectPositive([
+      cell.video?.element.videoHeight,
+      cell.video?.height,
+      cell.image?.height,
+      cell.asset?.height
+    ]).map((value) => value * scale);
+
+    if (widthCandidates.length) {
+      const width = Math.round(Math.max(...widthCandidates));
+      columnWidths[cell.col] = Math.max(columnWidths[cell.col], width);
+    }
+    if (heightCandidates.length) {
+      const height = Math.round(Math.max(...heightCandidates));
+      rowHeights[cell.row] = Math.max(rowHeights[cell.row], height);
+    }
+  });
+
+  const gap = baseLayout.gap;
+  const padding = baseLayout.padding;
+
+  const innerWidth = columnWidths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, grid.cols - 1);
+  const innerHeight = rowHeights.reduce((sum, height) => sum + height, 0) + gap * Math.max(0, grid.rows - 1);
+
+  const layout: ExtendedCanvasLayout = {
+    ...baseLayout,
+    columnWidths,
+    rowHeights,
+    innerWidth: Math.round(innerWidth),
+    innerHeight: Math.round(innerHeight),
+    canvasWidth: Math.round(innerWidth + padding * 2),
+    canvasHeight: Math.round(innerHeight + padding * 2),
+    cellWidth: columnWidths[0] ?? baseLayout.cellWidth,
+    cellHeight: rowHeights[0] ?? baseLayout.cellHeight
+  };
+
+  canvas.width = layout.canvasWidth;
+  canvas.height = layout.canvasHeight;
+  logInfo("Adjusted canvas layout", {
+    canvasWidth: layout.canvasWidth,
+    canvasHeight: layout.canvasHeight,
+    columnWidths,
+    rowHeights
+  });
+
+  const columnOffsets: number[] = [];
+  const rowOffsets: number[] = [];
+
+  let xOffset = 0;
+  for (let col = 0; col < grid.cols; col += 1) {
+    columnOffsets[col] = xOffset;
+    xOffset += columnWidths[col];
+    if (col < grid.cols - 1) {
+      xOffset += gap;
+    }
+  }
+
+  let yOffset = 0;
+  for (let row = 0; row < grid.rows; row += 1) {
+    rowOffsets[row] = yOffset;
+    yOffset += rowHeights[row];
+    if (row < grid.rows - 1) {
+      yOffset += gap;
+    }
+  }
+
+  const cellStates: CellRenderState[] = cellMedia.map((cell) => ({
+    index: cell.index,
+    row: cell.row,
+    col: cell.col,
+    x: layout.padding + (columnOffsets[cell.col] ?? 0),
+    y: layout.padding + (rowOffsets[cell.row] ?? 0),
+    width: columnWidths[cell.col] ?? layout.cellWidth,
+    height: rowHeights[cell.row] ?? layout.cellHeight,
+    track: cell.track,
+    asset: cell.asset,
+    image: cell.image,
+    video: cell.video
+  }));
 
   const playableVideos = cellStates
     .map((state) => state.video?.element)

@@ -282,7 +282,7 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   const rowHeights = Array.from({ length: grid.rows }, () => baseLayout.cellHeight);
 
   const collectPositive = (values: Array<number | undefined>) =>
-    values.filter((value): value is number => Number.isFinite(value) && value > 0);
+    values.filter((value): value is number => value !== undefined && Number.isFinite(value) && value > 0);
 
   cellMedia.forEach((cell) => {
     const scale = cell.track?.scale ?? 1;
@@ -402,7 +402,8 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     };
     recorder.onerror = (event) => {
       logError("MediaRecorder error", event);
-      reject(event.error ?? new Error("MediaRecorder encountered an error."));
+      const error = (event as { error?: DOMException | Error }).error ?? new Error("MediaRecorder encountered an error.");
+      reject(error);
     };
     recorder.onstop = () => {
       resolve(new Blob(chunks, { type: mimeType }));

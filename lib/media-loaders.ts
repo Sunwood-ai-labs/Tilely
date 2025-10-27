@@ -1,4 +1,5 @@
 import type { Asset } from "./types";
+import { detectAudioBitrateKbps, detectFrameRate, sanitizeAudioBitrateKbps, sanitizeFrameRate } from "./media-metadata";
 
 export type LoadedImage = {
   element: HTMLImageElement;
@@ -11,6 +12,8 @@ export type LoadedVideo = {
   width: number;
   height: number;
   duration: number;
+  fps?: number;
+  audioBitrateKbps?: number;
 };
 
 export const loadImageAsset = (asset: Asset): Promise<LoadedImage> =>
@@ -37,13 +40,29 @@ export const loadVideoAsset = (asset: Asset): Promise<LoadedVideo> =>
     video.playsInline = true;
     video.preload = "auto";
 
-    const handleLoadedData = () => {
+    const handleLoadedData = async () => {
+      let fps: number | undefined;
+      let audioBitrateKbps: number | undefined;
+      try {
+        fps = await detectFrameRate(video);
+      } catch {
+        fps = undefined;
+      }
+
+      try {
+        audioBitrateKbps = await detectAudioBitrateKbps(video);
+      } catch {
+        audioBitrateKbps = undefined;
+      }
+
       cleanup();
       resolve({
         element: video,
         width: video.videoWidth || asset.width || 0,
         height: video.videoHeight || asset.height || 0,
-        duration: Number.isFinite(video.duration) ? video.duration : asset.duration ?? 0
+        duration: Number.isFinite(video.duration) ? video.duration : asset.duration ?? 0,
+        fps: sanitizeFrameRate(fps ?? asset.fps),
+        audioBitrateKbps: sanitizeAudioBitrateKbps(audioBitrateKbps ?? asset.audioBitrateKbps)
       });
     };
 

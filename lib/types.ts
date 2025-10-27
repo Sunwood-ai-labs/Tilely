@@ -10,6 +10,7 @@ export interface Asset {
   height?: number;
   duration?: number;
   fps?: number;
+  audioBitrateKbps?: number;
   waveform?: number[];
   createdAt: number;
 }

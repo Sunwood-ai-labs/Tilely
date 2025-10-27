@@ -7,6 +7,7 @@ import {
   hexToRgba,
   BASE_EXPORT_SIZE
 } from "./canvas-utils";
+import { sanitizeAudioBitrateKbps, sanitizeFrameRate } from "./media-metadata";
 import { loadImageAsset, loadVideoAsset, type LoadedImage, type LoadedVideo } from "./media-loaders";
 import type { Project, Asset, Track } from "./types";
 
@@ -33,6 +34,16 @@ const DEFAULT_OPTIONS: { durationSeconds: number; fps: number } = {
 
 const MIN_CANVAS_DIMENSION = 256;
 const MAX_CANVAS_DIMENSION = 8192;
+const MIN_VIDEO_BITS_PER_SECOND = 1_000_000;
+const MAX_VIDEO_BITS_PER_SECOND = 40_000_000;
+const DEFAULT_AUDIO_BITS_PER_SECOND = 130_000;
+
+const sanitizeBitsPerSecond = (value?: number | null) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.round(Math.min(MAX_VIDEO_BITS_PER_SECOND, Math.max(MIN_VIDEO_BITS_PER_SECOND, value)));
+};
 
 const MEDIA_TYPE_CANDIDATES = [
   { mimeType: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", extension: "mp4" },
@@ -214,21 +225,35 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   const assetFps = project.tracks
     .map((track) => assetById.get(track.assetId)?.fps ?? 0)
     .filter((value): value is number => Number.isFinite(value) && value > 0);
+  const firstCellTrack = project.tracks.find((track) => track.cellIndex === 0);
+  const firstCellAsset = firstCellTrack ? assetById.get(firstCellTrack.assetId) : undefined;
+  const estimatedFirstCellBitrate = sanitizeBitsPerSecond(
+    firstCellAsset && firstCellAsset.duration && firstCellAsset.duration > 0 && firstCellAsset.size
+      ? (firstCellAsset.size * 8) / firstCellAsset.duration
+      : undefined
+  );
 
+  const firstCellDuration = firstCellTrack?.duration ?? firstCellAsset?.duration;
+  const derivedDuration =
+    typeof firstCellDuration === "number" && Number.isFinite(firstCellDuration) && firstCellDuration > 0
+      ? firstCellDuration
+      : undefined;
   const durationSeconds =
     options.durationSeconds ??
-    (trackDurations.length ? Math.max(DEFAULT_OPTIONS.durationSeconds, ...trackDurations) : DEFAULT_OPTIONS.durationSeconds);
-  const fps =
+    (derivedDuration ??
+      (trackDurations.length ? Math.max(DEFAULT_OPTIONS.durationSeconds, ...trackDurations) : DEFAULT_OPTIONS.durationSeconds));
+  const fallbackAssetFps =
+    assetFps.length ? Math.min(60, Math.max(DEFAULT_OPTIONS.fps, ...assetFps)) : undefined;
+  let derivedFps = sanitizeFrameRate(firstCellAsset?.fps);
+  let fps =
     options.fps ??
-    (assetFps.length ? Math.min(60, Math.max(DEFAULT_OPTIONS.fps, ...assetFps)) : DEFAULT_OPTIONS.fps);
+    (derivedFps ?? sanitizeFrameRate(fallbackAssetFps) ?? DEFAULT_OPTIONS.fps);
   const maxDimensionCandidate = options.maxDimension;
   const maxDimension =
     Number.isFinite(maxDimensionCandidate) && maxDimensionCandidate && maxDimensionCandidate > 0
       ? Math.min(MAX_CANVAS_DIMENSION, Math.max(MIN_CANVAS_DIMENSION, Math.round(maxDimensionCandidate)))
       : BASE_EXPORT_SIZE;
   let effectiveFps = fps;
-
-  logInfo("exportProjectToMp4 started", { durationSeconds, fps, maxDimension });
   logInfo("Project snapshot", {
     id: project.id,
     title: project.title,
@@ -276,7 +301,14 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
         try {
           logInfo("Loading video asset", meta);
           const video = await loadVideoAsset(asset);
-          logInfo("Video asset loaded", { ...meta, width: video.width, height: video.height, duration: video.duration });
+          logInfo("Video asset loaded", {
+            ...meta,
+            width: video.width,
+            height: video.height,
+            duration: video.duration,
+            fps: video.fps,
+            audioBitrateKbps: video.audioBitrateKbps
+          });
           return { ...base, video };
         } catch (error) {
           logWarn("Failed to load video asset", { ...meta, error });
@@ -299,6 +331,34 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
       return base;
     })
   );
+
+  const firstCellMedia = cellMedia.find((cell) => cell.index === 0);
+  const firstCellAudioBitrateKbps = sanitizeAudioBitrateKbps(
+    firstCellAsset?.audioBitrateKbps ?? firstCellMedia?.video?.audioBitrateKbps
+  );
+
+  if (!options.fps && !derivedFps) {
+    const measuredFps = sanitizeFrameRate(firstCellMedia?.video?.fps);
+    if (measuredFps) {
+      derivedFps = measuredFps;
+      fps = measuredFps;
+    }
+  }
+
+  logInfo("exportProjectToMp4 started", {
+    durationSeconds,
+    fps,
+    maxDimension,
+    firstCellTrackId: firstCellTrack?.id,
+    firstCellAssetId: firstCellAsset?.id,
+    derivedDuration,
+    derivedFps,
+    firstCellAssetDuration: firstCellAsset?.duration,
+    firstCellAssetFps: firstCellAsset?.fps,
+    measuredFirstCellFps: firstCellMedia?.video?.fps,
+    firstCellAudioBitrateKbps,
+    estimatedFirstCellBitrate
+  });
 
   const columnWidths = Array.from({ length: grid.cols }, () => baseLayout.cellWidth);
   const rowHeights = Array.from({ length: grid.rows }, () => baseLayout.cellHeight);
@@ -399,19 +459,24 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
 
   const videoTrackCount = cellStates.filter((cell) => cell.asset?.type === "video").length || playableVideos.length;
 
-  let videoBitsPerSecond =
+  let videoBitsPerSecond = sanitizeBitsPerSecond(
     options.videoBitsPerSecond ??
-    (options.videoBitrateMbps ? Math.round(options.videoBitrateMbps * 1_000_000) : undefined);
-  if (!videoBitsPerSecond || !Number.isFinite(videoBitsPerSecond) || videoBitsPerSecond <= 0) {
+      (options.videoBitrateMbps ? options.videoBitrateMbps * 1_000_000 : estimatedFirstCellBitrate)
+  );
+  if (!videoBitsPerSecond) {
     const basePerTrack = 5_000_000;
-    videoBitsPerSecond = basePerTrack * Math.max(1, videoTrackCount);
+    videoBitsPerSecond =
+      sanitizeBitsPerSecond(basePerTrack * Math.max(1, videoTrackCount)) ?? basePerTrack;
   }
 
   let audioBitsPerSecond =
     options.audioBitsPerSecond ??
     (options.audioBitrateKbps ? Math.round(options.audioBitrateKbps * 1_000) : undefined);
+  if ((!audioBitsPerSecond || !Number.isFinite(audioBitsPerSecond) || audioBitsPerSecond <= 0) && firstCellAudioBitrateKbps) {
+    audioBitsPerSecond = Math.round(firstCellAudioBitrateKbps * 1_000);
+  }
   if (!audioBitsPerSecond || !Number.isFinite(audioBitsPerSecond) || audioBitsPerSecond <= 0) {
-    audioBitsPerSecond = 192_000;
+    audioBitsPerSecond = DEFAULT_AUDIO_BITS_PER_SECOND;
   }
 
   await Promise.all(

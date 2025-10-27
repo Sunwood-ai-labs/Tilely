@@ -17,6 +17,7 @@ import {
 } from "./types";
 import { exportProjectToImage } from "./exporter";
 import { exportProjectToMp4 } from "./video-exporter";
+import { detectAudioBitrateKbps, detectFrameRate, sanitizeAudioBitrateKbps, sanitizeFrameRate } from "./media-metadata";
 
 const PROJECT_VERSION = "2025.10.01";
 
@@ -42,7 +43,7 @@ const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   fps: 30,
   durationSeconds: 8,
   videoBitrateMbps: 20,
-  audioBitrateKbps: 192,
+  audioBitrateKbps: 130,
   maxDimension: 2048
 };
 
@@ -152,6 +153,79 @@ const createTrackForAsset = (asset: Asset, cellIndex: number): Track => {
     panY: 0,
     scale: 1
   };
+};
+
+const sanitizeDurationSeconds = (value?: number) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  const clamped = clamp(value, 0.1, 600);
+  return Math.round(clamped * 1000) / 1000;
+};
+
+const deriveVideoBitrateMbps = (size?: number, duration?: number) => {
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+    return undefined;
+  }
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+    return undefined;
+  }
+  const bitsPerSecond = (size * 8) / duration;
+  if (!Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) {
+    return undefined;
+  }
+  return Math.max(5, Math.round(bitsPerSecond / 1_000_000));
+};
+
+const deriveAudioBitrateKbps = (size?: number, duration?: number) => {
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+    return undefined;
+  }
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+    return undefined;
+  }
+  const kbps = (size * 8) / 1000 / duration;
+  return sanitizeAudioBitrateKbps(kbps);
+};
+
+const deriveExportSettingsFromAsset = (asset: Asset, current: ExportSettings): ExportSettings | undefined => {
+  let changed = false;
+  const next: ExportSettings = { ...current };
+
+  const durationSeconds = sanitizeDurationSeconds(asset.duration);
+  if (typeof durationSeconds === "number" && Math.abs(durationSeconds - next.durationSeconds) > 0.0005) {
+    next.durationSeconds = durationSeconds;
+    changed = true;
+  }
+
+  if (asset.type === "video") {
+    const fps = sanitizeFrameRate(asset.fps);
+    if (typeof fps === "number") {
+      const roundedFps = Math.round(fps);
+      if (roundedFps !== next.fps) {
+        next.fps = roundedFps;
+        changed = true;
+      }
+    }
+
+    const videoBitrateMbps = deriveVideoBitrateMbps(asset.size, asset.duration);
+    if (typeof videoBitrateMbps === "number" && videoBitrateMbps !== next.videoBitrateMbps) {
+      next.videoBitrateMbps = videoBitrateMbps;
+      changed = true;
+    }
+  }
+
+  let audioBitrateKbps = sanitizeAudioBitrateKbps(asset.audioBitrateKbps);
+  if (audioBitrateKbps === undefined) {
+    audioBitrateKbps = deriveAudioBitrateKbps(asset.size, asset.duration);
+  }
+
+  if (typeof audioBitrateKbps === "number" && audioBitrateKbps !== next.audioBitrateKbps) {
+    next.audioBitrateKbps = audioBitrateKbps;
+    changed = true;
+  }
+
+  return changed ? next : undefined;
 };
 
 const cloneProject = (project: Project) => structuredCloneSafe(project);
@@ -273,6 +347,8 @@ export const useProjectStore = create<ProjectState>()(
           if (!asset) {
             return state;
           }
+          const exportSettingsUpdate =
+            cellIndex === 0 ? deriveExportSettingsFromAsset(asset, state.exportSettings) : undefined;
           const existingTrack = project.tracks.find((track) => track.cellIndex === cellIndex);
           if (existingTrack) {
             existingTrack.assetId = asset.id;
@@ -282,6 +358,15 @@ export const useProjectStore = create<ProjectState>()(
             project.tracks.push(createTrackForAsset(asset, cellIndex));
           }
           project.updatedAt = Date.now();
+          if (exportSettingsUpdate) {
+            return {
+              project,
+              history: [...state.history, state.project],
+              future: [],
+              exportSettings: exportSettingsUpdate
+            };
+          }
+
           return { project, history: [...state.history, state.project], future: [] };
         });
       },
@@ -593,23 +678,75 @@ export async function fileToAsset(file: File, type: AssetType): Promise<Asset> {
     return { ...baseAsset, ...dimensions };
   }
 
-  if (type === "video" || type === "audio") {
-    const metadata = await new Promise<{ duration: number; width?: number; height?: number }>((resolve, reject) => {
-      const element = document.createElement(type === "audio" ? "audio" : "video");
-      element.preload = "metadata";
-      element.onloadedmetadata = () => {
-        resolve({
-          duration: element.duration,
-          width: element instanceof HTMLVideoElement ? element.videoWidth : undefined,
-          height: element instanceof HTMLVideoElement ? element.videoHeight : undefined
-        });
+  if (type === "video") {
+    const metadata = await new Promise<{
+      duration: number;
+      width: number;
+      height: number;
+      fps?: number;
+      audioBitrateKbps?: number;
+    }>((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.crossOrigin = "anonymous";
+      video.muted = true;
+      video.playsInline = true;
+
+      const cleanup = () => {
+        video.onloadedmetadata = null;
+        video.onerror = null;
       };
-      element.onerror = () => reject(new Error("Failed to load media metadata"));
-      element.src = dataUrl;
-      // Force metadata fetch for Safari; load() is a no-op elsewhere
-      element.load();
+
+      video.onloadedmetadata = async () => {
+        const duration = Number.isFinite(video.duration) ? video.duration : baseAsset.duration ?? 0;
+        const width = video.videoWidth || baseAsset.width || undefined;
+        const height = video.videoHeight || baseAsset.height || undefined;
+        let fps: number | undefined;
+        let audioBitrateKbps: number | undefined;
+
+        try {
+          fps = sanitizeFrameRate(await detectFrameRate(video));
+        } catch {
+          fps = undefined;
+        }
+
+        try {
+          audioBitrateKbps = sanitizeAudioBitrateKbps(await detectAudioBitrateKbps(video));
+        } catch {
+          audioBitrateKbps = undefined;
+        }
+
+        cleanup();
+        resolve({ duration, width, height, fps, audioBitrateKbps });
+      };
+
+      video.onerror = () => {
+        cleanup();
+        reject(new Error("Failed to load media metadata"));
+      };
+
+      video.src = dataUrl;
+      video.load();
     });
+
     return { ...baseAsset, ...metadata };
+  }
+
+  if (type === "audio") {
+    const metadata = await new Promise<{ duration: number }>((resolve, reject) => {
+      const audio = document.createElement("audio");
+      audio.preload = "metadata";
+      audio.onloadedmetadata = () => {
+        resolve({ duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
+      };
+      audio.onerror = () => reject(new Error("Failed to load media metadata"));
+      audio.src = dataUrl;
+      audio.load();
+    });
+
+    const audioBitrateKbps = deriveAudioBitrateKbps(file.size, metadata.duration);
+
+    return { ...baseAsset, ...metadata, audioBitrateKbps };
   }
 
   return baseAsset;

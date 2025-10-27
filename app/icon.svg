@@ -14,8 +14,8 @@
     </filter>
   </defs>
 
-  <rect width="512" height="512" fill="url(#bgGradient)" />
-  <rect width="512" height="512" fill="url(#accentGlow)" />
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#bgGradient)" />
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#accentGlow)" />
 
   <g filter="url(#tileShadow)" transform="translate(0.5 0.5)">
     <rect x="56" y="56" width="220" height="220" rx="44" fill="#ffffff" fill-opacity="0.92" />

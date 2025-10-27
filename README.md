@@ -1,7 +1,22 @@
 
 ![](header.png)
 
+<div align="center">
+
 # Tilely
+
+  <p>
+    <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white" alt="Next.js" /></a>
+    <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-20232a?logo=react&logoColor=61DAFB" alt="React" /></a>
+    <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" /></a>
+    <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-0F172A?logo=tailwindcss&logoColor=38BDF8" alt="Tailwind CSS" /></a>
+    <a href="https://ui.shadcn.com/"><img src="https://img.shields.io/badge/shadcn%2Fui-151515" alt="shadcn/ui" /></a>
+    <a href="https://www.radix-ui.com/"><img src="https://img.shields.io/badge/Radix_UI-161618?logo=radix-ui&logoColor=white" alt="Radix UI" /></a>
+    <a href="https://docs.pmnd.rs/zustand/getting-started/introduction"><img src="https://img.shields.io/badge/Zustand-1E1E1E" alt="Zustand" /></a>
+    <a href="https://sonner.emilkowal.ski/"><img src="https://img.shields.io/badge/sonner-18181B" alt="sonner" /></a>
+  </p>
+
+</div>
 
 Tilely は動画や画像をタイル状にレイアウトして、ソーシャル投稿やプレゼン用のコラージュをサクッと作れる Web スタジオだよ。shadcn/ui ベースのミニマル UI に、ドラッグレスでも直感的に触れる編集パネルとタイムラインを詰め込んで、素材投入から書き出しまでワンフローで駆け抜けちゃう。🥳
 
@@ -14,7 +29,9 @@ Tilely は動画や画像をタイル状にレイアウトして、ソーシャ�
 - **レンダリングフローの可視化**: ブラウザ／サーバどちらで書き出すかをキューイング。進捗や出力リンクをダッシュボード表示。
 - **ローカルプロジェクト保存**: JSON でダウンロードすれば、再読み込みして続きからスタートできちゃう。
 
-## 🛠️ スタック
+![](docs/image.png)
+
+### レイヤー別メモ
 
 | Layer | Tech |
 | --- | --- |

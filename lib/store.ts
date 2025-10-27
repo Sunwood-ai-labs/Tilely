@@ -42,7 +42,8 @@ const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   fps: 30,
   durationSeconds: 8,
   videoBitrateMbps: 20,
-  audioBitrateKbps: 192
+  audioBitrateKbps: 192,
+  maxDimension: 2048
 };
 
 const pad = (value: number) => value.toString().padStart(2, "0");
@@ -415,7 +416,8 @@ export const useProjectStore = create<ProjectState>()(
               durationSeconds: exportSettings.durationSeconds,
               fps: exportSettings.fps,
               videoBitrateMbps: exportSettings.videoBitrateMbps,
-              audioBitrateKbps: exportSettings.audioBitrateKbps
+              audioBitrateKbps: exportSettings.audioBitrateKbps,
+              maxDimension: exportSettings.maxDimension
             });
             blob = result.blob;
             resolvedMimeType = result.mimeType;
@@ -543,6 +545,11 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
+        const exportSettings = {
+          ...DEFAULT_EXPORT_SETTINGS,
+          ...(typed.exportSettings ?? {})
+        };
+
         return {
           project: typed.project ?? createInitialProject(),
           selection: typed.selection,
@@ -550,7 +557,7 @@ export const useProjectStore = create<ProjectState>()(
           renderJob: version < 2 ? undefined : typed.renderJob,
           future: typed.future,
           history: typed.history,
-          exportSettings: typed.exportSettings ?? DEFAULT_EXPORT_SETTINGS
+          exportSettings
         };
       }
     }

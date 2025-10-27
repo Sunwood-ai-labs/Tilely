@@ -113,4 +113,5 @@ export interface ExportSettings {
   durationSeconds: number;
   videoBitrateMbps: number;
   audioBitrateKbps: number;
+  maxDimension: number;
 }

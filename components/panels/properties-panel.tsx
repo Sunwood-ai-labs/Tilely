@@ -14,6 +14,14 @@ import { useProjectStore } from "@/lib/store";
 import { clamp, formatDuration, getExportFileName } from "@/lib/utils";
 import { BadgePercent, Blend, Grid3X3 } from "lucide-react";
 
+const RESOLUTION_PRESETS = [
+  { value: 1280, label: "1280px · HD 720p" },
+  { value: 1920, label: "1920px · Full HD 1080p" },
+  { value: 2048, label: "2048px · Default" },
+  { value: 2560, label: "2560px · QHD 1440p" },
+  { value: 3840, label: "3840px · 4K UHD" }
+] as const;
+
 export function PropertiesPanel() {
   const project = useProjectStore((state) => state.project);
   const updateComposition = useProjectStore((state) => state.updateComposition);
@@ -56,9 +64,23 @@ export function PropertiesPanel() {
   const handleExportSettingChange = (key: keyof typeof exportSettings, value: number) => {
     updateExportSettings((current) => ({
       ...current,
-      [key]: value
+      [key]:
+        key === "maxDimension"
+          ? clamp(Math.round(value) || current.maxDimension, 256, 8192)
+          : value
     }));
   };
+
+  const ratioWidth = Number.isFinite(customRatio.width) && customRatio.width > 0 ? customRatio.width : 1;
+  const ratioHeight = Number.isFinite(customRatio.height) && customRatio.height > 0 ? customRatio.height : 1;
+  const ratioMax = Math.max(ratioWidth, ratioHeight);
+  const maxDimension = clamp(Math.round(exportSettings.maxDimension) || 2048, 256, 8192);
+  const scaledWidth = Math.round((ratioWidth / ratioMax) * maxDimension);
+  const scaledHeight = Math.round((ratioHeight / ratioMax) * maxDimension);
+  const formattedWidth = scaledWidth.toLocaleString();
+  const formattedHeight = scaledHeight.toLocaleString();
+  const formattedMaxDimension = maxDimension.toLocaleString();
+  const hasCustomResolution = !RESOLUTION_PRESETS.some((preset) => preset.value === maxDimension);
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -357,6 +379,30 @@ export function PropertiesPanel() {
         <AccordionItem value="export-settings" className="rounded-2xl border border-border/50 bg-zinc-950/60">
           <AccordionTrigger className="px-4 py-3 text-sm font-semibold">書き出し設定</AccordionTrigger>
           <AccordionContent className="space-y-4 px-4 pb-4 text-xs text-muted-foreground">
+            <div className="space-y-2">
+              <Label htmlFor="export-resolution">解像度 (長辺)</Label>
+              <Select
+                value={String(maxDimension)}
+                onValueChange={(value) => handleExportSettingChange("maxDimension", Number(value))}
+              >
+                <SelectTrigger id="export-resolution">
+                  <SelectValue placeholder="解像度を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESOLUTION_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={String(preset.value)}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                  {hasCustomResolution ? (
+                    <SelectItem value={String(maxDimension)}>{formattedMaxDimension}px · Custom</SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                実出力 {formattedWidth}×{formattedHeight}px だよ〜
+              </p>
+            </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em]">
                 <span>フレームレート</span>

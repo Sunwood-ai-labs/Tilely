@@ -1,4 +1,12 @@
-import { applyRoundedRect, calculateCanvasLayout, drawPlaceholder, drawVisualInCell, getTrackByCell, hexToRgba } from "./canvas-utils";
+import {
+  applyRoundedRect,
+  calculateCanvasLayout,
+  drawPlaceholder,
+  drawVisualInCell,
+  getTrackByCell,
+  hexToRgba,
+  BASE_EXPORT_SIZE
+} from "./canvas-utils";
 import { loadImageAsset, loadVideoAsset, type LoadedImage, type LoadedVideo } from "./media-loaders";
 import type { Project, Asset, Track } from "./types";
 
@@ -9,6 +17,7 @@ type ExportOptions = {
   videoBitsPerSecond?: number;
   audioBitrateKbps?: number;
   audioBitsPerSecond?: number;
+  maxDimension?: number;
 };
 
 export type VideoExportResult = {
@@ -21,6 +30,9 @@ const DEFAULT_OPTIONS: { durationSeconds: number; fps: number } = {
   durationSeconds: 3,
   fps: 30
 };
+
+const MIN_CANVAS_DIMENSION = 256;
+const MAX_CANVAS_DIMENSION = 8192;
 
 const MEDIA_TYPE_CANDIDATES = [
   { mimeType: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", extension: "mp4" },
@@ -209,8 +221,14 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   const fps =
     options.fps ??
     (assetFps.length ? Math.min(60, Math.max(DEFAULT_OPTIONS.fps, ...assetFps)) : DEFAULT_OPTIONS.fps);
+  const maxDimensionCandidate = options.maxDimension;
+  const maxDimension =
+    Number.isFinite(maxDimensionCandidate) && maxDimensionCandidate && maxDimensionCandidate > 0
+      ? Math.min(MAX_CANVAS_DIMENSION, Math.max(MIN_CANVAS_DIMENSION, Math.round(maxDimensionCandidate)))
+      : BASE_EXPORT_SIZE;
+  let effectiveFps = fps;
 
-  logInfo("exportProjectToMp4 started", { durationSeconds, fps });
+  logInfo("exportProjectToMp4 started", { durationSeconds, fps, maxDimension });
   logInfo("Project snapshot", {
     id: project.id,
     title: project.title,
@@ -220,7 +238,7 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     aspectRatio: project.composition.aspectRatio
   });
 
-  const baseLayout = calculateCanvasLayout(project.composition);
+  const baseLayout = calculateCanvasLayout(project.composition, maxDimension);
   logInfo("Initial canvas layout", baseLayout);
 
   const canvas = document.createElement("canvas");
@@ -423,7 +441,39 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     audioBitsPerSecond: recorderOptions.audioBitsPerSecond
   });
 
-  const stream = canvas.captureStream(fps);
+  const captureFrameRate = Math.max(1, fps);
+  const stream = canvas.captureStream(captureFrameRate);
+  const [canvasTrack] = stream.getVideoTracks();
+
+  if (canvasTrack && typeof canvasTrack.applyConstraints === "function") {
+    try {
+      await canvasTrack.applyConstraints({ frameRate: captureFrameRate });
+    } catch (error) {
+      logWarn("Failed to apply frameRate constraint to canvas track", { requestedFrameRate: captureFrameRate, error });
+    }
+  }
+
+  if (canvasTrack && typeof canvasTrack.getSettings === "function") {
+    try {
+      const settings = canvasTrack.getSettings();
+      if (settings?.frameRate && Number.isFinite(settings.frameRate)) {
+        effectiveFps = settings.frameRate;
+      }
+    } catch (error) {
+      logWarn("Failed to read canvas track settings", { error });
+    }
+  }
+
+  if (!Number.isFinite(effectiveFps) || effectiveFps <= 0) {
+    effectiveFps = captureFrameRate;
+  }
+
+  logInfo("Canvas capture stream configured", {
+    requestedFps: fps,
+    captureFrameRate,
+    effectiveFps
+  });
+
   const recorder = new MediaRecorder(stream, recorderOptions);
 
   const chunks: BlobPart[] = [];
@@ -443,11 +493,11 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
     };
   });
 
-  const timeslice = Math.max(250, Math.round(1000 / fps));
+  const timeslice = Math.max(250, Math.round(1000 / Math.max(effectiveFps, 1)));
   recorder.start(timeslice);
 
-  const totalFrames = Math.max(1, Math.round(durationSeconds * fps));
-  const frameInterval = 1000 / fps;
+  const totalFrames = Math.max(1, Math.round(durationSeconds * effectiveFps));
+  const frameInterval = 1000 / Math.max(effectiveFps, 1);
   let framesRendered = 0;
   let rafId = 0;
   let lastFrameTime = now();
@@ -480,7 +530,9 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   const blob = await recordingPromise;
   logInfo("exportProjectToMp4 finished", {
     durationSeconds,
-    fps,
+    requestedFps: fps,
+    effectiveFps,
+    maxDimension,
     framesRendered,
     videoBitsPerSecond: recorderOptions.videoBitsPerSecond,
     audioBitsPerSecond: recorderOptions.audioBitsPerSecond,

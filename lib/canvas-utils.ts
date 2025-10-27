@@ -66,10 +66,11 @@ export type CanvasLayout = {
   cellHeight: number;
 };
 
-export const calculateCanvasLayout = (composition: Composition): CanvasLayout => {
+export const calculateCanvasLayout = (composition: Composition, baseSize = BASE_EXPORT_SIZE): CanvasLayout => {
   const { width: aspectWidth, height: aspectHeight } = parseAspectRatio(composition.aspectRatio);
-  const maxDimension = Math.max(aspectWidth, aspectHeight);
-  const scaleFactor = BASE_EXPORT_SIZE / Math.max(maxDimension, 1);
+  const clampedBaseSize = Math.max(1, baseSize);
+  const aspectMaxDimension = Math.max(aspectWidth, aspectHeight);
+  const scaleFactor = clampedBaseSize / Math.max(aspectMaxDimension, 1);
   const canvasWidth = Math.round(aspectWidth * scaleFactor);
   const canvasHeight = Math.round(aspectHeight * scaleFactor);
 

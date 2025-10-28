@@ -31,7 +31,7 @@ export type VideoExportResult = {
 
 const DEFAULT_OPTIONS: { durationSeconds: number; fps: number } = {
   durationSeconds: 3,
-  fps: 30
+  fps: 24
 };
 
 const MIN_CANVAS_DIMENSION = 256;

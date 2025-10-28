@@ -40,7 +40,7 @@ const RENDER_PRESET_META: Record<string, typeof DEFAULT_RENDER_META> = {
 const getRenderMeta = (presetId: string) => RENDER_PRESET_META[presetId] ?? DEFAULT_RENDER_META;
 
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
-  fps: 30,
+  fps: 24,
   durationSeconds: 8,
   videoBitrateMbps: 20,
   audioBitrateKbps: 130,
@@ -516,6 +516,16 @@ export const useProjectStore = create<ProjectState>()(
           ) {
             effectiveExportSettings.durationSeconds = detectedDuration;
             settingsPreAdjusted = true;
+          }
+
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[Tilely] Export settings auto-sync", {
+              detectedFps,
+              detectedDuration,
+              appliedFps: effectiveExportSettings.fps,
+              appliedDuration: effectiveExportSettings.durationSeconds,
+              settingsPreAdjusted
+            });
           }
 
           if (settingsPreAdjusted) {

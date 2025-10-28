@@ -23,6 +23,14 @@ const RESOLUTION_PRESETS = [
   { value: 3840, label: "3840px · 4K UHD" }
 ] as const;
 
+const FPS_PRESETS = [
+  { value: 24, label: "24 fps · Cinema" },
+  { value: 25, label: "25 fps · PAL" },
+  { value: 30, label: "30 fps · NTSC" },
+  { value: 50, label: "50 fps" },
+  { value: 60, label: "60 fps" }
+] as const;
+
 export function PropertiesPanel() {
   const project = useProjectStore((state) => state.project);
   const updateComposition = useProjectStore((state) => state.updateComposition);
@@ -112,6 +120,18 @@ export function PropertiesPanel() {
   const displayAspectLabel = exportAspectSelection === "project"
     ? `${project.composition.aspectRatio} · プロジェクト比率`
     : exportAspectSelection;
+
+  const fpsPreset = FPS_PRESETS.some((preset) => preset.value === exportSettings.fps)
+    ? String(exportSettings.fps)
+    : "custom";
+
+  const handleFpsPresetChange = (value: string) => {
+    if (value === "custom") return;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      handleExportSettingChange("fps", parsed);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -450,9 +470,22 @@ export function PropertiesPanel() {
               </p>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="export-fps">フレームレート</Label>
               <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em]">
-                <span>フレームレート</span>
                 <span className="font-mono text-xs text-indigo-200">{exportSettings.fps} fps</span>
+                <Select value={fpsPreset} onValueChange={handleFpsPresetChange}>
+                  <SelectTrigger id="export-fps" className="h-8 w-36 text-xs">
+                    <SelectValue placeholder="プリセットを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FPS_PRESETS.map((preset) => (
+                      <SelectItem key={preset.value} value={String(preset.value)}>
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                    {fpsPreset === "custom" ? <SelectItem value="custom">Custom</SelectItem> : null}
+                  </SelectContent>
+                </Select>
               </div>
               <Slider
                 value={[exportSettings.fps]}

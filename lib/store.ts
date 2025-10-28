@@ -44,7 +44,8 @@ const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   durationSeconds: 8,
   videoBitrateMbps: 20,
   audioBitrateKbps: 130,
-  maxDimension: 2048
+  maxDimension: 2048,
+  aspectRatio: "project"
 };
 
 const pad = (value: number) => value.toString().padStart(2, "0");
@@ -482,7 +483,45 @@ export const useProjectStore = create<ProjectState>()(
 
         try {
           const exportSettings = get().exportSettings;
-          let workingJob: RenderJob = {
+          const rawAspect = exportSettings.aspectRatio ?? "project";
+          const aspectSelection =
+            typeof rawAspect === "string" && rawAspect.trim().length > 0 ? rawAspect.trim() : "project";
+          if (aspectSelection !== "project") {
+            const [ratioW, ratioH] = aspectSelection.split(":").map(Number);
+            if (Number.isFinite(ratioW) && Number.isFinite(ratioH) && ratioW > 0 && ratioH > 0) {
+              project.composition.aspectRatio = `${ratioW}:${ratioH}`;
+            }
+          }
+
+          const firstTrack = project.tracks.find((track) => track.cellIndex === 0);
+          const firstAsset = firstTrack ? project.assets.find((asset) => asset.id === firstTrack.assetId) : undefined;
+          const detectedFps = sanitizeFrameRate(firstAsset?.fps);
+          const detectedDuration = sanitizeDurationSeconds(firstTrack?.duration ?? firstAsset?.duration);
+
+          let effectiveExportSettings = { ...exportSettings };
+          let settingsPreAdjusted = false;
+
+          if (typeof detectedFps === "number" && exportSettings.fps === DEFAULT_EXPORT_SETTINGS.fps) {
+            const roundedFps = Math.round(detectedFps);
+            if (roundedFps !== exportSettings.fps) {
+              effectiveExportSettings.fps = roundedFps;
+              settingsPreAdjusted = true;
+            }
+          }
+
+          if (
+            typeof detectedDuration === "number" &&
+            Math.abs(exportSettings.durationSeconds - DEFAULT_EXPORT_SETTINGS.durationSeconds) < 0.001 &&
+            Math.abs(detectedDuration - exportSettings.durationSeconds) > 0.001
+          ) {
+            effectiveExportSettings.durationSeconds = detectedDuration;
+            settingsPreAdjusted = true;
+          }
+
+          if (settingsPreAdjusted) {
+            set({ exportSettings: effectiveExportSettings });
+          }
+let workingJob: RenderJob = {
             ...baseJob,
             status: "processing",
             progress: 20
@@ -498,23 +537,40 @@ export const useProjectStore = create<ProjectState>()(
             workingJob = { ...workingJob, progress: 45 };
             set({ renderJob: workingJob });
             const result = await exportProjectToMp4(project, {
-              durationSeconds: exportSettings.durationSeconds,
-              fps: exportSettings.fps,
-              videoBitrateMbps: exportSettings.videoBitrateMbps,
-              audioBitrateKbps: exportSettings.audioBitrateKbps,
-              maxDimension: exportSettings.maxDimension
+              durationSeconds: effectiveExportSettings.durationSeconds,
+              fps: effectiveExportSettings.fps,
+              videoBitrateMbps: effectiveExportSettings.videoBitrateMbps,
+              audioBitrateKbps: effectiveExportSettings.audioBitrateKbps,
+              maxDimension: effectiveExportSettings.maxDimension
             });
             blob = result.blob;
             resolvedMimeType = result.mimeType;
             resolvedExtension = result.fileExtension;
             resolvedLabel = `${resolvedExtension.toUpperCase()} を保存`;
+            const resolvedFps = sanitizeFrameRate(result.fps);
+            const resolvedDuration = sanitizeDurationSeconds(result.durationSeconds);
             workingJob = {
               ...workingJob,
               mimeType: resolvedMimeType,
               fileExtension: resolvedExtension,
               downloadLabel: resolvedLabel
             };
-            set({ renderJob: workingJob });
+            set((state) => {
+              const nextSettings = { ...state.exportSettings };
+              let settingsChanged = false;
+              if (typeof resolvedFps === "number" && Math.round(resolvedFps) !== state.exportSettings.fps) {
+                nextSettings.fps = Math.round(resolvedFps);
+                settingsChanged = true;
+              }
+              if (
+                typeof resolvedDuration === "number" &&
+                Math.abs(resolvedDuration - state.exportSettings.durationSeconds) > 0.001
+              ) {
+                nextSettings.durationSeconds = resolvedDuration;
+                settingsChanged = true;
+              }
+              return settingsChanged ? { renderJob: workingJob, exportSettings: nextSettings } : { renderJob: workingJob };
+            });
           } else {
             blob = await exportProjectToImage(project);
           }
@@ -699,8 +755,8 @@ export async function fileToAsset(file: File, type: AssetType): Promise<Asset> {
 
       video.onloadedmetadata = async () => {
         const duration = Number.isFinite(video.duration) ? video.duration : baseAsset.duration ?? 0;
-        const width = video.videoWidth || baseAsset.width || undefined;
-        const height = video.videoHeight || baseAsset.height || undefined;
+        const width = video.videoWidth || baseAsset.width || 0;
+        const height = video.videoHeight || baseAsset.height || 0;
         let fps: number | undefined;
         let audioBitrateKbps: number | undefined;
 

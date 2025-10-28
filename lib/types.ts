@@ -115,4 +115,5 @@ export interface ExportSettings {
   videoBitrateMbps: number;
   audioBitrateKbps: number;
   maxDimension: number;
+  aspectRatio: string;
 }

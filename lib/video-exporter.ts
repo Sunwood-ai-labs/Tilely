@@ -25,6 +25,8 @@ export type VideoExportResult = {
   blob: Blob;
   mimeType: string;
   fileExtension: string;
+  fps: number;
+  durationSeconds: number;
 };
 
 const DEFAULT_OPTIONS: { durationSeconds: number; fps: number } = {
@@ -108,6 +110,258 @@ type CellMedia = {
   image?: LoadedImage;
   video?: LoadedVideo;
 };
+
+const isBrowserEnvironment = () => typeof window !== "undefined" && typeof document !== "undefined";
+
+type ProbeModule = typeof import("./server/ffprobe");
+type ProbeVideoMetadata = Awaited<ReturnType<ProbeModule["probeVideoMetadata"]>>;
+
+const ensureEvenDimension = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
+const pickFirstPositive = (...values: Array<number | null | undefined>) => {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const toAbsoluteAssetPath = (
+  input: string,
+  resolve: (path: string) => string,
+  isAbsolute: (path: string) => boolean,
+  fileURLToPath: (url: string) => string
+) => {
+  if (input.startsWith("file://")) {
+    return fileURLToPath(input);
+  }
+  if (isAbsolute(input)) {
+    return input;
+  }
+  return resolve(input);
+};
+
+async function exportProjectToMp4Node(project: Project, options: ExportOptions = {}): Promise<VideoExportResult> {
+  const pathModule = await import(/* webpackIgnore: true */ "node:path");
+  const fsModule = await import(/* webpackIgnore: true */ "node:fs/promises");
+  const osModule = await import(/* webpackIgnore: true */ "node:os");
+  const childProcessModule = await import(/* webpackIgnore: true */ "node:child_process");
+  const cryptoModule = await import(/* webpackIgnore: true */ "node:crypto");
+  const urlModule = await import(/* webpackIgnore: true */ "node:url");
+  const probeModule = (await import("./server/ffprobe")) as ProbeModule;
+
+  const { join, resolve, isAbsolute } = pathModule;
+  const { mkdtemp, readFile, rm } = fsModule;
+  const { tmpdir } = osModule;
+  const { spawn } = childProcessModule;
+  const { randomUUID } = cryptoModule;
+  const { fileURLToPath } = urlModule;
+  const { probeVideoMetadata } = probeModule;
+
+  type NodeCell = {
+    index: number;
+    row: number;
+    col: number;
+    track: Track;
+    asset: Asset;
+    filePath: string;
+  };
+
+  const assetById = new Map(project.assets.map((asset) => [asset.id, asset]));
+  const trackByCell = getTrackByCell(project.tracks ?? []);
+
+  const cells: NodeCell[] = project.composition.grid.cells
+    .map((cell, index) => {
+      const track = trackByCell.get(index);
+      const asset = track ? assetById.get(track.assetId) : undefined;
+      if (!track || !asset || asset.type !== "video") {
+        return undefined;
+      }
+      const filePath = toAbsoluteAssetPath(asset.url, resolve, isAbsolute, fileURLToPath);
+      return {
+        index,
+        row: cell.row,
+        col: cell.col,
+        track,
+        asset,
+        filePath
+      } satisfies NodeCell;
+    })
+    .filter((value): value is NodeCell => Boolean(value));
+
+  if (cells.length === 0) {
+    throw new Error("Video export requires at least one video asset.");
+  }
+
+  const metadata: ProbeVideoMetadata[] = await Promise.all(
+    cells.map(async (cell) => {
+      try {
+        return await probeVideoMetadata(cell.filePath);
+      } catch (error) {
+        throw new Error(`Failed to probe video asset at ${cell.filePath}: ${(error as Error).message}`);
+      }
+    })
+  );
+
+  const firstCell = cells[0];
+  const firstMeta = metadata[0];
+
+  const fps =
+    sanitizeFrameRate(
+      pickFirstPositive(
+        options.fps,
+        firstCell.asset.fps,
+        firstMeta?.fps,
+        cells
+          .map((cell, index) => metadata[index]?.fps ?? cell.asset.fps)
+          .find((value) => typeof value === "number")
+      )
+    ) ?? DEFAULT_OPTIONS.fps;
+
+  const durationSeconds =
+    pickFirstPositive(
+      options.durationSeconds,
+      firstCell.track.duration,
+      firstCell.asset.duration,
+      firstMeta?.duration,
+      metadata.map((item) => item.duration).find((value) => typeof value === "number")
+    ) ?? DEFAULT_OPTIONS.durationSeconds;
+
+  let videoBitsPerSecond = sanitizeBitsPerSecond(
+    options.videoBitsPerSecond ??
+      (options.videoBitrateMbps ? options.videoBitrateMbps * 1_000_000 : firstMeta?.bitrate)
+  );
+  if (!videoBitsPerSecond) {
+    const metaBitrates = metadata
+      .map((item) => item.bitrate)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+    if (metaBitrates.length) {
+      videoBitsPerSecond = sanitizeBitsPerSecond(Math.max(...metaBitrates));
+    }
+  }
+  if (!videoBitsPerSecond) {
+    videoBitsPerSecond = sanitizeBitsPerSecond(5_000_000 * Math.max(1, cells.length));
+  }
+
+  let audioBitsPerSecond =
+    options.audioBitsPerSecond ?? (options.audioBitrateKbps ? Math.round(options.audioBitrateKbps * 1_000) : undefined);
+  if (!audioBitsPerSecond) {
+    const audioMeta = metadata.find((item) => typeof item.audioBitrate === "number" && item.audioBitrate > 0);
+    if (audioMeta?.audioBitrate) {
+      audioBitsPerSecond = Math.round(audioMeta.audioBitrate);
+    }
+  }
+  if (!audioBitsPerSecond && metadata.some((item) => item.hasAudio)) {
+    audioBitsPerSecond = DEFAULT_AUDIO_BITS_PER_SECOND;
+  }
+
+  const baseLayout = calculateCanvasLayout(project.composition, options.maxDimension ?? BASE_EXPORT_SIZE);
+  const padding = Math.max(0, Math.round(baseLayout.padding ?? 0));
+  const gap = Math.max(0, Math.round(baseLayout.gap ?? 0));
+  const cellWidth = ensureEvenDimension(Math.round(baseLayout.cellWidth));
+  const cellHeight = ensureEvenDimension(Math.round(baseLayout.cellHeight));
+  const rawWidth = cellWidth * project.composition.grid.cols + gap * Math.max(0, project.composition.grid.cols - 1);
+  const rawHeight = cellHeight * project.composition.grid.rows + gap * Math.max(0, project.composition.grid.rows - 1);
+  const canvasWidth = ensureEvenDimension(rawWidth + padding * 2);
+  const canvasHeight = ensureEvenDimension(rawHeight + padding * 2);
+
+  const positions = cells.map((cell) => ({
+    x: cell.col * (cellWidth + gap),
+    y: cell.row * (cellHeight + gap)
+  }));
+
+  const filterChains: string[] = cells.map((_, index) =>
+    `[${index}:v]scale=${cellWidth}:${cellHeight}:force_original_aspect_ratio=increase,crop=${cellWidth}:${cellHeight},setsar=1[v${index}]`
+  );
+  const layoutParts = positions.map((position) => `${Math.round(position.x)}_${Math.round(position.y)}`);
+  const xstackOutputLabel = padding > 0 ? "stacked" : "vout";
+  filterChains.push(
+    `${cells.map((_, index) => `[v${index}]`).join("")}xstack=inputs=${cells.length}:layout=${layoutParts.join("|")}:fill=black[${xstackOutputLabel}]`
+  );
+  if (padding > 0) {
+    filterChains.push(`[${xstackOutputLabel}]pad=${canvasWidth}:${canvasHeight}:${padding}:${padding}:color=black[vout]`);
+  }
+
+  const filterComplex = filterChains.join(";");
+  const inputArgs = cells.flatMap((cell) => ["-i", cell.filePath]);
+  const hasAudio = metadata.some((item) => item.hasAudio);
+
+  const tmpDir = await mkdtemp(join(tmpdir(), "tilely-export-"));
+  const outputPath = join(tmpDir, `export-${randomUUID()}.mp4`);
+
+  const args = [
+    "-hide_banner",
+    "-y",
+    ...inputArgs,
+    "-filter_complex",
+    filterComplex,
+    "-map",
+    "[vout]",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-preset",
+    "fast",
+    "-r",
+    String(fps),
+    "-movflags",
+    "+faststart",
+    "-shortest"
+  ];
+
+  if (videoBitsPerSecond) {
+    args.push("-b:v", String(videoBitsPerSecond));
+  }
+
+  if (typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    args.push("-t", durationSeconds.toFixed(3));
+  }
+
+  if (hasAudio) {
+    args.push("-map", "0:a:0?");
+    args.push("-c:a", "aac");
+    if (audioBitsPerSecond) {
+      args.push("-b:a", String(audioBitsPerSecond));
+    }
+  }
+
+  args.push(outputPath);
+
+  logInfo("Executing ffmpeg for Node export", { args, canvasWidth, canvasHeight, fps, hasAudio });
+
+  try {
+    const subprocess = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    subprocess.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      subprocess.on("error", (error) => rejectPromise(error));
+      subprocess.on("close", (code) => {
+        if (code === 0) {
+          resolvePromise();
+        } else {
+          rejectPromise(new Error(`ffmpeg exited with code ${code}: ${stderr.trim()}`));
+        }
+      });
+    });
+
+    const buffer = await readFile(outputPath);
+    const blob = new Blob([buffer], { type: "video/mp4" });
+    return {
+      blob,
+      mimeType: "video/mp4",
+      fileExtension: "mp4",
+      fps,
+      durationSeconds
+    };
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+}
 
 const pickMediaType = () => {
   if (typeof MediaRecorder === "undefined") {
@@ -208,8 +462,8 @@ const renderFrame = (ctx: CanvasRenderingContext2D, project: Project, layout: Ex
 };
 
 export async function exportProjectToMp4(project: Project, options: ExportOptions = {}): Promise<VideoExportResult> {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    throw new Error("Video export is only available in the browser.");
+  if (!isBrowserEnvironment()) {
+    return exportProjectToMp4Node(project, options);
   }
 
   if (typeof MediaRecorder === "undefined") {
@@ -561,21 +815,27 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   const timeslice = Math.max(250, Math.round(1000 / Math.max(effectiveFps, 1)));
   recorder.start(timeslice);
 
-  const totalFrames = Math.max(1, Math.round(durationSeconds * effectiveFps));
-  const frameInterval = 1000 / Math.max(effectiveFps, 1);
+  const durationMs = Math.max(1, durationSeconds * 1000);
+  const frameInterval = 1000 / Math.max(fps, 1);
   let framesRendered = 0;
   let rafId = 0;
   let lastFrameTime = now();
+  let renderStartTime = 0;
 
   await new Promise<void>((resolve) => {
     const step = (time: number) => {
-      if (framesRendered === 0 || time - lastFrameTime >= frameInterval) {
+      if (framesRendered === 0) {
+        renderStartTime = time;
+        lastFrameTime = time - frameInterval;
+      }
+
+      if (time - lastFrameTime >= frameInterval) {
         renderFrame(ctx, project, layout, cellStates);
         framesRendered += 1;
         lastFrameTime = time;
       }
 
-      if (framesRendered >= totalFrames) {
+      if (time - renderStartTime >= durationMs) {
         resolve();
         return;
       }
@@ -618,6 +878,8 @@ export async function exportProjectToMp4(project: Project, options: ExportOption
   return {
     blob,
     mimeType: blob.type || mimeType,
-    fileExtension: extension
+    fileExtension: extension,
+    fps: effectiveFps,
+    durationSeconds
   };
 }

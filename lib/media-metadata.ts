@@ -7,25 +7,25 @@ const isFiniteNumber = (value: unknown): value is number => typeof value === "nu
 
 const isFinitePositive = (value: unknown): value is number => isFiniteNumber(value) && value > 0;
 
-const resetPlayback = (video: HTMLVideoElement) => {
+const resetPlayback = (media: HTMLMediaElement) => {
   try {
-    if (!video.paused) {
-      video.pause();
+    if (!media.paused) {
+      media.pause();
     }
   } catch {
     // ignore pause errors
   }
 
   try {
-    video.currentTime = 0;
+    media.currentTime = 0;
   } catch {
     // ignore seek errors
   }
 };
 
-const maybePlay = async (video: HTMLVideoElement) => {
+const maybePlay = async (media: HTMLMediaElement) => {
   try {
-    const result = video.play?.();
+    const result = media.play?.();
     if (result && typeof result.then === "function") {
       await result;
     }
@@ -56,14 +56,16 @@ const normalizeFrameRate = (value?: number | null): number | undefined =>
   sanitizeFrameRate(value ?? undefined);
 
 const detectViaCaptureStream = async (video: HTMLVideoElement): Promise<number | undefined> => {
-  if (typeof video.captureStream !== "function") {
+  const videoWithCapture = video as HTMLVideoElement & { captureStream?: () => MediaStream };
+
+  if (typeof videoWithCapture.captureStream !== "function") {
     return undefined;
   }
 
   let stream: MediaStream | undefined;
   try {
     await maybePlay(video);
-    stream = video.captureStream();
+    stream = videoWithCapture.captureStream();
     const [track] = stream.getVideoTracks();
     const settings = track?.getSettings?.();
     const frameRate = normalizeFrameRate(settings?.frameRate);
@@ -173,7 +175,9 @@ export const detectAudioBitrateKbps = async (media: HTMLMediaElement): Promise<n
     return undefined;
   }
 
-  if (typeof media.captureStream !== "function") {
+  const mediaWithCapture = media as HTMLMediaElement & { captureStream?: () => MediaStream };
+
+  if (typeof mediaWithCapture.captureStream !== "function") {
     return undefined;
   }
 
@@ -194,7 +198,7 @@ export const detectAudioBitrateKbps = async (media: HTMLMediaElement): Promise<n
   }
 
   try {
-    sourceStream = media.captureStream();
+    sourceStream = mediaWithCapture.captureStream();
   } catch {
     cleanup();
     return undefined;
@@ -239,7 +243,8 @@ export const detectAudioBitrateKbps = async (media: HTMLMediaElement): Promise<n
     };
     recorder.onstop = () => {
       const elapsedSeconds = Math.max(0.001, (performance.now() - startedAt) / 1000);
-      const totalBits = chunks.reduce((sum, part) => sum + part.size, 0) * 8;
+      const blob = new Blob(chunks);
+      const totalBits = blob.size * 8;
       const kbps = totalBits / 1000 / elapsedSeconds;
       finish(sanitizeAudioBitrateKbps(kbps));
     };

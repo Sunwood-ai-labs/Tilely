@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
+import { parseAspectRatio } from "@/lib/canvas-utils";
 import { layoutPresets, aspectRatioPresets } from "@/lib/presets";
 import { useProjectStore } from "@/lib/store";
 import { clamp, formatDuration, getExportFileName } from "@/lib/utils";
@@ -61,7 +62,13 @@ export function PropertiesPanel() {
     [project.title, renderJob?.fileExtension]
   );
 
-  const handleExportSettingChange = (key: keyof typeof exportSettings, value: number) => {
+  type NumericExportSettingKey = Exclude<keyof typeof exportSettings, "aspectRatio">;
+
+  const rawAspectSetting = exportSettings.aspectRatio;
+  const exportAspectSelection =
+    typeof rawAspectSetting === "string" && rawAspectSetting.trim().length > 0 ? rawAspectSetting.trim() : "project";
+
+  const handleExportSettingChange = (key: NumericExportSettingKey, value: number) => {
     updateExportSettings((current) => ({
       ...current,
       [key]:
@@ -71,16 +78,40 @@ export function PropertiesPanel() {
     }));
   };
 
-  const ratioWidth = Number.isFinite(customRatio.width) && customRatio.width > 0 ? customRatio.width : 1;
-  const ratioHeight = Number.isFinite(customRatio.height) && customRatio.height > 0 ? customRatio.height : 1;
-  const ratioMax = Math.max(ratioWidth, ratioHeight);
+  const handleExportAspectChange = (value: string) => {
+    updateExportSettings((current) => ({
+      ...current,
+      aspectRatio: value
+    }));
+  };
+
+  const targetAspectRatio = exportAspectSelection === "project"
+    ? project.composition.aspectRatio
+    : exportAspectSelection;
+
+  const { width: exportRatioWidthRaw, height: exportRatioHeightRaw } = parseAspectRatio(targetAspectRatio);
+  const exportRatioWidth = Math.max(1, exportRatioWidthRaw);
+  const exportRatioHeight = Math.max(1, exportRatioHeightRaw);
+  const ratioMax = Math.max(exportRatioWidth, exportRatioHeight);
   const maxDimension = clamp(Math.round(exportSettings.maxDimension) || 2048, 256, 8192);
-  const scaledWidth = Math.round((ratioWidth / ratioMax) * maxDimension);
-  const scaledHeight = Math.round((ratioHeight / ratioMax) * maxDimension);
+  const scaledWidth = Math.round((exportRatioWidth / ratioMax) * maxDimension);
+  const scaledHeight = Math.round((exportRatioHeight / ratioMax) * maxDimension);
   const formattedWidth = scaledWidth.toLocaleString();
   const formattedHeight = scaledHeight.toLocaleString();
   const formattedMaxDimension = maxDimension.toLocaleString();
   const hasCustomResolution = !RESOLUTION_PRESETS.some((preset) => preset.value === maxDimension);
+
+  const exportAspectOptions = useMemo(
+    () => [
+      { id: "project", label: "プロジェクトと同じ" },
+      ...aspectRatioPresets.filter((preset) => preset.id !== "custom")
+    ],
+    []
+  );
+
+  const displayAspectLabel = exportAspectSelection === "project"
+    ? `${project.composition.aspectRatio} · プロジェクト比率`
+    : exportAspectSelection;
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -399,8 +430,23 @@ export function PropertiesPanel() {
                   ) : null}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="export-aspect">書き出しアスペクト</Label>
+              <Select value={exportAspectSelection} onValueChange={handleExportAspectChange}>
+                <SelectTrigger id="export-aspect">
+                  <SelectValue placeholder="アスペクトを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {exportAspectOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-[10px] text-muted-foreground">
-                実出力 {formattedWidth}×{formattedHeight}px だよ〜
+                現在の出力比率 {displayAspectLabel} ／ 実出力 {formattedWidth}×{formattedHeight}px だよ〜
               </p>
             </div>
             <div className="space-y-2">

@@ -42,7 +42,7 @@ const getRenderMeta = (presetId: string) => RENDER_PRESET_META[presetId] ?? DEFA
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   fps: 24,
   durationSeconds: 8,
-  videoBitrateMbps: 20,
+  videoBitrateMbps: 50,
   audioBitrateKbps: 130,
   maxDimension: 2048,
   aspectRatio: "project"
@@ -190,43 +190,9 @@ const deriveAudioBitrateKbps = (size?: number, duration?: number) => {
 };
 
 const deriveExportSettingsFromAsset = (asset: Asset, current: ExportSettings): ExportSettings | undefined => {
-  let changed = false;
-  const next: ExportSettings = { ...current };
-
-  const durationSeconds = sanitizeDurationSeconds(asset.duration);
-  if (typeof durationSeconds === "number" && Math.abs(durationSeconds - next.durationSeconds) > 0.0005) {
-    next.durationSeconds = durationSeconds;
-    changed = true;
-  }
-
-  if (asset.type === "video") {
-    const fps = sanitizeFrameRate(asset.fps);
-    if (typeof fps === "number") {
-      const roundedFps = Math.round(fps);
-      if (roundedFps !== next.fps) {
-        next.fps = roundedFps;
-        changed = true;
-      }
-    }
-
-    const videoBitrateMbps = deriveVideoBitrateMbps(asset.size, asset.duration);
-    if (typeof videoBitrateMbps === "number" && videoBitrateMbps !== next.videoBitrateMbps) {
-      next.videoBitrateMbps = videoBitrateMbps;
-      changed = true;
-    }
-  }
-
-  let audioBitrateKbps = sanitizeAudioBitrateKbps(asset.audioBitrateKbps);
-  if (audioBitrateKbps === undefined) {
-    audioBitrateKbps = deriveAudioBitrateKbps(asset.size, asset.duration);
-  }
-
-  if (typeof audioBitrateKbps === "number" && audioBitrateKbps !== next.audioBitrateKbps) {
-    next.audioBitrateKbps = audioBitrateKbps;
-    changed = true;
-  }
-
-  return changed ? next : undefined;
+  // Export settings are no longer automatically changed when importing videos
+  // to maintain user-configured default values
+  return undefined;
 };
 
 const cloneProject = (project: Project) => structuredCloneSafe(project);
@@ -493,44 +459,8 @@ export const useProjectStore = create<ProjectState>()(
             }
           }
 
-          const firstTrack = project.tracks.find((track) => track.cellIndex === 0);
-          const firstAsset = firstTrack ? project.assets.find((asset) => asset.id === firstTrack.assetId) : undefined;
-          const detectedFps = sanitizeFrameRate(firstAsset?.fps);
-          const detectedDuration = sanitizeDurationSeconds(firstTrack?.duration ?? firstAsset?.duration);
-
-          let effectiveExportSettings = { ...exportSettings };
-          let settingsPreAdjusted = false;
-
-          if (typeof detectedFps === "number" && exportSettings.fps === DEFAULT_EXPORT_SETTINGS.fps) {
-            const roundedFps = Math.round(detectedFps);
-            if (roundedFps !== exportSettings.fps) {
-              effectiveExportSettings.fps = roundedFps;
-              settingsPreAdjusted = true;
-            }
-          }
-
-          if (
-            typeof detectedDuration === "number" &&
-            Math.abs(exportSettings.durationSeconds - DEFAULT_EXPORT_SETTINGS.durationSeconds) < 0.001 &&
-            Math.abs(detectedDuration - exportSettings.durationSeconds) > 0.001
-          ) {
-            effectiveExportSettings.durationSeconds = detectedDuration;
-            settingsPreAdjusted = true;
-          }
-
-          if (process.env.NODE_ENV !== "production") {
-            console.info("[Tilely] Export settings auto-sync", {
-              detectedFps,
-              detectedDuration,
-              appliedFps: effectiveExportSettings.fps,
-              appliedDuration: effectiveExportSettings.durationSeconds,
-              settingsPreAdjusted
-            });
-          }
-
-          if (settingsPreAdjusted) {
-            set({ exportSettings: effectiveExportSettings });
-          }
+          // Use export settings as-is without auto-adjustment
+          const effectiveExportSettings = { ...exportSettings };
 let workingJob: RenderJob = {
             ...baseJob,
             status: "processing",
@@ -557,30 +487,13 @@ let workingJob: RenderJob = {
             resolvedMimeType = result.mimeType;
             resolvedExtension = result.fileExtension;
             resolvedLabel = `${resolvedExtension.toUpperCase()} を保存`;
-            const resolvedFps = sanitizeFrameRate(result.fps);
-            const resolvedDuration = sanitizeDurationSeconds(result.durationSeconds);
             workingJob = {
               ...workingJob,
               mimeType: resolvedMimeType,
               fileExtension: resolvedExtension,
               downloadLabel: resolvedLabel
             };
-            set((state) => {
-              const nextSettings = { ...state.exportSettings };
-              let settingsChanged = false;
-              if (typeof resolvedFps === "number" && Math.round(resolvedFps) !== state.exportSettings.fps) {
-                nextSettings.fps = Math.round(resolvedFps);
-                settingsChanged = true;
-              }
-              if (
-                typeof resolvedDuration === "number" &&
-                Math.abs(resolvedDuration - state.exportSettings.durationSeconds) > 0.001
-              ) {
-                nextSettings.durationSeconds = resolvedDuration;
-                settingsChanged = true;
-              }
-              return settingsChanged ? { renderJob: workingJob, exportSettings: nextSettings } : { renderJob: workingJob };
-            });
+            set({ renderJob: workingJob });
           } else {
             blob = await exportProjectToImage(project);
           }

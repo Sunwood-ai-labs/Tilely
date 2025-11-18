@@ -4,16 +4,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProjectStore } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
 import type { Track } from "@/lib/types";
-import { AudioLines, Crop, Trash2 } from "lucide-react";
+import { AudioLines, Crop, Tag, Trash2 } from "lucide-react";
 
 export function TimelineView() {
   const project = useProjectStore((state) => state.project);
   const updateTrack = useProjectStore((state) => state.updateTrack);
   const removeTrack = useProjectStore((state) => state.removeTrack);
   const setActiveCell = useProjectStore((state) => state.setActiveCell);
+  const updateAssetMetadata = useProjectStore((state) => state.updateAssetMetadata);
   const activeCell = useProjectStore((state) => state.activeCell);
 
   const clips = [...project.tracks].sort((a, b) => a.cellIndex - b.cellIndex);
@@ -23,7 +27,7 @@ export function TimelineView() {
       <header className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">タイムライン</h2>
-          <p className="text-[11px] text-muted-foreground">各セルのトリムと音量をここで調整できるよ。</p>
+          <p className="text-[11px] text-muted-foreground">各セルのトリム、音量、メタデータをここで調整できるよ。</p>
         </div>
         <div className="rounded-full bg-zinc-900/70 px-3 py-1 text-[10px] text-muted-foreground">
           全長: {formatDuration(getMaxDuration(clips))}
@@ -130,9 +134,66 @@ export function TimelineView() {
                       }
                     />
                   </div>
+                  <div className="mt-3 space-y-2 rounded-lg border border-border/30 bg-zinc-950/40 p-3">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                      <Tag className="h-3 w-3" /> メタデータ / タグ
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px]">AI ツール</Label>
+                      <Input
+                        type="text"
+                        placeholder="例: DALL-E 3, Midjourney"
+                        value={asset.metadata?.aiTool ?? ""}
+                        onChange={(event) =>
+                          updateAssetMetadata(asset.id, {
+                            ...asset.metadata,
+                            aiTool: event.target.value
+                          })
+                        }
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px]">プロンプト形式</Label>
+                      <Select
+                        value={asset.metadata?.promptFormat ?? ""}
+                        onValueChange={(value) =>
+                          updateAssetMetadata(asset.id, {
+                            ...asset.metadata,
+                            promptFormat: value
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="形式を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="JSON">JSON</SelectItem>
+                          <SelectItem value="YAML">YAML</SelectItem>
+                          <SelectItem value="Plain Text">Plain Text</SelectItem>
+                          <SelectItem value="Markdown">Markdown</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px]">プロンプト内容</Label>
+                      <Input
+                        type="text"
+                        placeholder="プロンプトの内容"
+                        value={asset.metadata?.prompt ?? ""}
+                        onChange={(event) =>
+                          updateAssetMetadata(asset.id, {
+                            ...asset.metadata,
+                            prompt: event.target.value
+                          })
+                        }
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
                   {isActive ? (
                     <div className="mt-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100">
-                      選択中のセルだよ。右側のプロパティパネルでさらに調整してみてね！
+                      選択中のセルだよ。プロパティパネルでスケールやパンも調整できるよ！
                     </div>
                   ) : null}
                 </div>

@@ -7,6 +7,7 @@ import { layoutPresets } from "./presets";
 import { clamp, structuredCloneSafe } from "./utils";
 import {
   Asset,
+  AssetMetadata,
   AssetType,
   Composition,
   ExportSettings,
@@ -79,6 +80,7 @@ interface ProjectState {
   applyLayoutPreset: (rows: number, cols: number) => void;
   updateAudio: (updater: (audio: Project["audio"]) => Project["audio"]) => void;
   updateExportSettings: (updater: (settings: ExportSettings) => ExportSettings) => void;
+  updateAssetMetadata: (assetId: string, metadata: AssetMetadata) => void;
   ensureUniqueTitle: () => void;
   queueRender: (presetId: string, target: RenderJob["target"]) => Promise<void>;
   updateRenderProgress: (progress: number, status: RenderJob["status"], outputUrl?: string) => void;
@@ -420,6 +422,16 @@ export const useProjectStore = create<ProjectState>()(
         set((state) => ({
           exportSettings: updater({ ...state.exportSettings })
         }));
+      },
+      updateAssetMetadata: (assetId, metadata) => {
+        set((state) => {
+          const project = cloneProject(state.project);
+          project.assets = project.assets.map((asset) =>
+            asset.id === assetId ? { ...asset, metadata } : asset
+          );
+          project.updatedAt = Date.now();
+          return { project, history: [...state.history, state.project], future: [] };
+        });
       },
       queueRender: async (presetId, target) => {
         const project = cloneProject(get().project);

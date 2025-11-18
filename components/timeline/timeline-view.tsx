@@ -47,7 +47,7 @@ export function TimelineView() {
                     <button
                       type="button"
                       onClick={() => setActiveCell(clip.cellIndex)}
-                      className="flex flex-col items-start text-left"
+                      className="flex flex-col items-start gap-1 text-left"
                     >
                       <span className="text-sm font-semibold text-foreground">
                         セル {clip.cellIndex + 1}: {asset.name}
@@ -56,6 +56,25 @@ export function TimelineView() {
                         {asset.type.toUpperCase()} · {formatDuration(clip.in)} – {formatDuration(clip.out)} / 合計
                         {formatDuration(clip.duration)}
                       </span>
+                      {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt) && (
+                        <div className="flex flex-wrap gap-2 text-[10px]">
+                          {asset.metadata.aiTool && (
+                            <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-indigo-200">
+                              AI: {asset.metadata.aiTool}
+                            </span>
+                          )}
+                          {asset.metadata.promptFormat && (
+                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-200">
+                              形式: {asset.metadata.promptFormat}
+                            </span>
+                          )}
+                          {asset.metadata.prompt && (
+                            <span className="max-w-xs truncate rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-200">
+                              {asset.metadata.prompt}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </button>
                     <div className="flex items-center gap-2">
                       <span>ミュート</span>

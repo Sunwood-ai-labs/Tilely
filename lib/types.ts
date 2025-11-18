@@ -1,5 +1,12 @@
 export type AssetType = "video" | "image" | "audio" | "logo";
 
+export interface AssetMetadata {
+  aiTool?: string;        // AI tool name (e.g., "DALL-E 3", "Midjourney", "Stable Diffusion")
+  promptFormat?: string;  // Prompt format (e.g., "JSON", "YAML", "Plain Text")
+  prompt?: string;        // Actual prompt content
+  tags?: string[];        // Additional custom tags
+}
+
 export interface Asset {
   id: string;
   name: string;
@@ -13,6 +20,7 @@ export interface Asset {
   audioBitrateKbps?: number;
   waveform?: number[];
   createdAt: number;
+  metadata?: AssetMetadata;
 }
 
 export type FitMode = "contain" | "cover";

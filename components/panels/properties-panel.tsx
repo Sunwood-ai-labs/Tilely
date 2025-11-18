@@ -39,6 +39,7 @@ export function PropertiesPanel() {
   const updateAudio = useProjectStore((state) => state.updateAudio);
   const exportSettings = useProjectStore((state) => state.exportSettings);
   const updateExportSettings = useProjectStore((state) => state.updateExportSettings);
+  const updateAssetMetadata = useProjectStore((state) => state.updateAssetMetadata);
   const renderJob = useProjectStore((state) => state.renderJob);
   const activeCell = useProjectStore((state) => state.activeCell);
 
@@ -335,6 +336,61 @@ export function PropertiesPanel() {
                     {activeAsset.type.toUpperCase()} · {activeAsset.width}×{activeAsset.height}
                     {activeAsset.duration ? ` · ${formatDuration(activeAsset.duration)}` : ""}
                   </p>
+                </div>
+                <div className="space-y-2 rounded border border-border/50 bg-zinc-950/80 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    メタデータ / タグ
+                  </p>
+                  <div className="space-y-2">
+                    <Label className="text-[10px]">AI ツール</Label>
+                    <Input
+                      type="text"
+                      placeholder="例: DALL-E 3, Midjourney"
+                      value={activeAsset.metadata?.aiTool ?? ""}
+                      onChange={(event) =>
+                        updateAssetMetadata(activeAsset.id, {
+                          ...activeAsset.metadata,
+                          aiTool: event.target.value
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px]">プロンプト形式</Label>
+                    <Select
+                      value={activeAsset.metadata?.promptFormat ?? ""}
+                      onValueChange={(value) =>
+                        updateAssetMetadata(activeAsset.id, {
+                          ...activeAsset.metadata,
+                          promptFormat: value
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="形式を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="JSON">JSON</SelectItem>
+                        <SelectItem value="YAML">YAML</SelectItem>
+                        <SelectItem value="Plain Text">Plain Text</SelectItem>
+                        <SelectItem value="Markdown">Markdown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px]">プロンプト内容</Label>
+                    <Input
+                      type="text"
+                      placeholder="プロンプトの内容"
+                      value={activeAsset.metadata?.prompt ?? ""}
+                      onChange={(event) =>
+                        updateAssetMetadata(activeAsset.id, {
+                          ...activeAsset.metadata,
+                          prompt: event.target.value
+                        })
+                      }
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Button

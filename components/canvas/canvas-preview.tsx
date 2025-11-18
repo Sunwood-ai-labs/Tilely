@@ -101,7 +101,31 @@ export function CanvasPreview() {
                     )}
                   >
                     {asset ? (
-                      <AssetPreview trackId={track!.id} />
+                      <>
+                        <AssetPreview trackId={track!.id} />
+                        {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt) && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 text-[10px] text-white">
+                            {asset.metadata.aiTool && (
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-indigo-300">AI:</span>
+                                <span className="truncate">{asset.metadata.aiTool}</span>
+                              </div>
+                            )}
+                            {asset.metadata.promptFormat && (
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-emerald-300">形式:</span>
+                                <span className="truncate">{asset.metadata.promptFormat}</span>
+                              </div>
+                            )}
+                            {asset.metadata.prompt && (
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-amber-300">プロンプト:</span>
+                                <span className="truncate">{asset.metadata.prompt}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
                         <ImageOff className="h-5 w-5" />

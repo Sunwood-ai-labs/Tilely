@@ -140,18 +140,35 @@ export function TimelineView() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px]">AI ツール</Label>
-                      <Input
-                        type="text"
-                        placeholder="例: DALL-E 3, Midjourney"
+                      <Select
                         value={asset.metadata?.aiTool ?? ""}
-                        onChange={(event) =>
+                        onValueChange={(value) =>
                           updateAssetMetadata(asset.id, {
                             ...asset.metadata,
-                            aiTool: event.target.value
+                            aiTool: value
                           })
                         }
-                        className="h-8 text-xs"
-                      />
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="ツールを選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DALL-E 3">DALL-E 3</SelectItem>
+                          <SelectItem value="Grok">Grok</SelectItem>
+                          <SelectItem value="Whisk">Whisk</SelectItem>
+                          <SelectItem value="Midjourney">Midjourney</SelectItem>
+                          <SelectItem value="Stable Diffusion">Stable Diffusion</SelectItem>
+                          <SelectItem value="Firefly">Firefly (Adobe)</SelectItem>
+                          <SelectItem value="Imagen">Imagen (Google)</SelectItem>
+                          <SelectItem value="Leonardo.AI">Leonardo.AI</SelectItem>
+                          <SelectItem value="Runway">Runway</SelectItem>
+                          <SelectItem value="Pika">Pika</SelectItem>
+                          <SelectItem value="Sora">Sora (OpenAI)</SelectItem>
+                          <SelectItem value="Kling">Kling</SelectItem>
+                          <SelectItem value="Veo">Veo (Google)</SelectItem>
+                          <SelectItem value="その他">その他</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px]">プロンプト形式</Label>

@@ -161,11 +161,16 @@ export function TimelineView() {
                           <SelectItem value="Firefly">Firefly (Adobe)</SelectItem>
                           <SelectItem value="Imagen">Imagen (Google)</SelectItem>
                           <SelectItem value="Leonardo.AI">Leonardo.AI</SelectItem>
+                          <SelectItem value="Flux Kontext">Flux Kontext</SelectItem>
+                          <SelectItem value="Reve">Reve</SelectItem>
                           <SelectItem value="Runway">Runway</SelectItem>
                           <SelectItem value="Pika">Pika</SelectItem>
                           <SelectItem value="Sora">Sora (OpenAI)</SelectItem>
                           <SelectItem value="Kling">Kling</SelectItem>
                           <SelectItem value="Veo">Veo (Google)</SelectItem>
+                          <SelectItem value="Seedream 4.0">Seedream 4.0</SelectItem>
+                          <SelectItem value="Nano Banana">Nano Banana</SelectItem>
+                          <SelectItem value="Multi Ref">Multi Ref</SelectItem>
                           <SelectItem value="その他">その他</SelectItem>
                         </SelectContent>
                       </Select>

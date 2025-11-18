@@ -103,7 +103,7 @@ export function CanvasPreview() {
                     {asset ? (
                       <>
                         <AssetPreview trackId={track!.id} />
-                        {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt) && (
+                        {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
                           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 text-[10px] text-white">
                             {asset.metadata.aiTool && (
                               <div className="flex items-center gap-1">
@@ -121,6 +121,15 @@ export function CanvasPreview() {
                               <div className="flex items-center gap-1">
                                 <span className="font-semibold text-amber-300">プロンプト:</span>
                                 <span className="truncate">{asset.metadata.prompt}</span>
+                              </div>
+                            )}
+                            {asset.metadata.tags && asset.metadata.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {asset.metadata.tags.map((tag) => (
+                                  <span key={tag} className="rounded bg-purple-500/30 px-1.5 py-0.5 text-purple-200">
+                                    {tag}
+                                  </span>
+                                ))}
                               </div>
                             )}
                           </div>

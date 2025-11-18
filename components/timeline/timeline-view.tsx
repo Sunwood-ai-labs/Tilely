@@ -6,11 +6,26 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProjectStore } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
 import type { Track } from "@/lib/types";
 import { AudioLines, Crop, Tag, Trash2 } from "lucide-react";
+
+const TAG_OPTIONS = [
+  "AI生成",
+  "手動編集",
+  "アニメーション",
+  "背景",
+  "キャラクター",
+  "ロゴ",
+  "テキスト",
+  "エフェクト",
+  "音楽",
+  "効果音",
+  "ボイス"
+] as const;
 
 export function TimelineView() {
   const project = useProjectStore((state) => state.project);
@@ -60,7 +75,7 @@ export function TimelineView() {
                         {asset.type.toUpperCase()} · {formatDuration(clip.in)} – {formatDuration(clip.out)} / 合計
                         {formatDuration(clip.duration)}
                       </span>
-                      {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt) && (
+                      {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
                         <div className="flex flex-wrap gap-2 text-[10px]">
                           {asset.metadata.aiTool && (
                             <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-indigo-200">
@@ -77,6 +92,11 @@ export function TimelineView() {
                               {asset.metadata.prompt}
                             </span>
                           )}
+                          {asset.metadata.tags && asset.metadata.tags.map((tag) => (
+                            <span key={tag} className="rounded bg-purple-500/20 px-1.5 py-0.5 text-purple-200">
+                              {tag}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </button>
@@ -211,6 +231,38 @@ export function TimelineView() {
                         }
                         className="h-8 text-xs"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px]">タグ（複数選択可）</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {TAG_OPTIONS.map((tag) => {
+                          const isChecked = asset.metadata?.tags?.includes(tag) ?? false;
+                          return (
+                            <div key={tag} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`${asset.id}-${tag}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  const currentTags = asset.metadata?.tags ?? [];
+                                  const newTags = checked
+                                    ? [...currentTags, tag]
+                                    : currentTags.filter((t) => t !== tag);
+                                  updateAssetMetadata(asset.id, {
+                                    ...asset.metadata,
+                                    tags: newTags
+                                  });
+                                }}
+                              />
+                              <label
+                                htmlFor={`${asset.id}-${tag}`}
+                                className="text-[10px] leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                {tag}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                   {isActive ? (

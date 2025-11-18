@@ -427,6 +427,60 @@ const drawCellFrame = (ctx: CanvasRenderingContext2D, state: CellRenderState, st
 
   ctx.restore();
 
+  // Draw metadata overlay
+  if (state.asset?.metadata && (state.asset.metadata.aiTool || state.asset.metadata.promptFormat || state.asset.metadata.prompt || (state.asset.metadata.tags && state.asset.metadata.tags.length > 0))) {
+    ctx.save();
+
+    const fontSize = Math.max(10, state.height * 0.035);
+    const lineHeight = fontSize * 1.4;
+    const overlayPadding = Math.max(8, state.width * 0.02);
+
+    let textLines: Array<{ text: string; color: string }> = [];
+
+    if (state.asset.metadata.aiTool) {
+      textLines.push({ text: `AI: ${state.asset.metadata.aiTool}`, color: "rgba(165, 180, 252, 1)" });
+    }
+    if (state.asset.metadata.promptFormat) {
+      textLines.push({ text: `形式: ${state.asset.metadata.promptFormat}`, color: "rgba(110, 231, 183, 1)" });
+    }
+    if (state.asset.metadata.prompt) {
+      const maxLength = Math.floor(state.width / (fontSize * 0.6));
+      const truncated = state.asset.metadata.prompt.length > maxLength
+        ? state.asset.metadata.prompt.substring(0, maxLength) + "..."
+        : state.asset.metadata.prompt;
+      textLines.push({ text: `プロンプト: ${truncated}`, color: "rgba(251, 191, 36, 1)" });
+    }
+    if (state.asset.metadata.tags && state.asset.metadata.tags.length > 0) {
+      const tagsText = state.asset.metadata.tags.join(", ");
+      const maxLength = Math.floor(state.width / (fontSize * 0.6));
+      const truncated = tagsText.length > maxLength
+        ? tagsText.substring(0, maxLength) + "..."
+        : tagsText;
+      textLines.push({ text: `タグ: ${truncated}`, color: "rgba(216, 180, 254, 1)" });
+    }
+
+    const overlayHeight = textLines.length * lineHeight + overlayPadding * 2;
+    const gradientY = state.y + state.height - overlayHeight;
+
+    // Draw gradient background
+    const gradient = ctx.createLinearGradient(state.x, gradientY, state.x, state.y + state.height);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0.7)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0.9)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(state.x, gradientY, state.width, overlayHeight);
+
+    // Draw text
+    ctx.font = `${fontSize}px sans-serif`;
+    ctx.textBaseline = "top";
+
+    textLines.forEach((line, i) => {
+      ctx.fillStyle = line.color;
+      ctx.fillText(line.text, state.x + overlayPadding, gradientY + overlayPadding + i * lineHeight, state.width - overlayPadding * 2);
+    });
+
+    ctx.restore();
+  }
+
   if ((style.borderWidth ?? 0) > 0) {
     ctx.save();
     ctx.lineWidth = style.borderWidth!;

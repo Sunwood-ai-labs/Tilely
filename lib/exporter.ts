@@ -156,7 +156,7 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
     ctx.restore();
 
     // Draw metadata overlay
-    if (asset?.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0))) {
+    if (asset?.metadata && ((asset.metadata.aiTool && asset.metadata.aiTool.length > 0) || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0))) {
       ctx.save();
 
       const fontSize = Math.max(10, cellHeight * 0.035);
@@ -165,8 +165,13 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
 
       let textLines: Array<{ text: string; color: string }> = [];
 
-      if (asset.metadata.aiTool) {
-        textLines.push({ text: `AI: ${asset.metadata.aiTool}`, color: "rgba(165, 180, 252, 1)" });
+      if (asset.metadata.aiTool && asset.metadata.aiTool.length > 0) {
+        const aiToolsText = asset.metadata.aiTool.join(", ");
+        const maxLength = Math.floor(cellWidth / (fontSize * 0.6));
+        const truncated = aiToolsText.length > maxLength
+          ? aiToolsText.substring(0, maxLength) + "..."
+          : aiToolsText;
+        textLines.push({ text: `AI: ${truncated}`, color: "rgba(165, 180, 252, 1)" });
       }
       if (asset.metadata.promptFormat) {
         textLines.push({ text: `形式: ${asset.metadata.promptFormat}`, color: "rgba(110, 231, 183, 1)" });

@@ -103,12 +103,15 @@ export function CanvasPreview() {
                     {asset ? (
                       <>
                         <AssetPreview trackId={track!.id} />
-                        {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
+                        {asset.metadata && ((asset.metadata.aiTool && asset.metadata.aiTool.length > 0) || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
                           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 text-[10px] text-white">
-                            {asset.metadata.aiTool && (
-                              <div className="flex items-center gap-1">
-                                <span className="font-semibold text-indigo-300">AI:</span>
-                                <span className="truncate">{asset.metadata.aiTool}</span>
+                            {asset.metadata.aiTool && asset.metadata.aiTool.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {asset.metadata.aiTool.map((tool) => (
+                                  <span key={tool} className="rounded bg-indigo-500/40 px-1.5 py-0.5 text-indigo-100">
+                                    {tool}
+                                  </span>
+                                ))}
                               </div>
                             )}
                             {asset.metadata.promptFormat && (

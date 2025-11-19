@@ -428,7 +428,7 @@ const drawCellFrame = (ctx: CanvasRenderingContext2D, state: CellRenderState, st
   ctx.restore();
 
   // Draw metadata overlay
-  if (state.asset?.metadata && (state.asset.metadata.aiTool || state.asset.metadata.promptFormat || state.asset.metadata.prompt || (state.asset.metadata.tags && state.asset.metadata.tags.length > 0))) {
+  if (state.asset?.metadata && ((state.asset.metadata.aiTool && state.asset.metadata.aiTool.length > 0) || state.asset.metadata.promptFormat || state.asset.metadata.prompt || (state.asset.metadata.tags && state.asset.metadata.tags.length > 0))) {
     ctx.save();
 
     const fontSize = Math.max(10, state.height * 0.035);
@@ -437,8 +437,13 @@ const drawCellFrame = (ctx: CanvasRenderingContext2D, state: CellRenderState, st
 
     let textLines: Array<{ text: string; color: string }> = [];
 
-    if (state.asset.metadata.aiTool) {
-      textLines.push({ text: `AI: ${state.asset.metadata.aiTool}`, color: "rgba(165, 180, 252, 1)" });
+    if (state.asset.metadata.aiTool && state.asset.metadata.aiTool.length > 0) {
+      const aiToolsText = state.asset.metadata.aiTool.join(", ");
+      const maxLength = Math.floor(state.width / (fontSize * 0.6));
+      const truncated = aiToolsText.length > maxLength
+        ? aiToolsText.substring(0, maxLength) + "..."
+        : aiToolsText;
+      textLines.push({ text: `AI: ${truncated}`, color: "rgba(165, 180, 252, 1)" });
     }
     if (state.asset.metadata.promptFormat) {
       textLines.push({ text: `形式: ${state.asset.metadata.promptFormat}`, color: "rgba(110, 231, 183, 1)" });

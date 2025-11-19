@@ -1,7 +1,7 @@
 export type AssetType = "video" | "image" | "audio" | "logo";
 
 export interface AssetMetadata {
-  aiTool?: string;        // AI tool name (e.g., "DALL-E 3", "Midjourney", "Stable Diffusion")
+  aiTool?: string[];      // AI tool names (e.g., ["DALL-E 3", "Midjourney"])
   promptFormat?: string;  // Prompt format (e.g., "JSON", "YAML", "Plain Text")
   prompt?: string;        // Actual prompt content
   tags?: string[];        // Additional custom tags

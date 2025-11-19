@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -27,6 +28,28 @@ const TAG_OPTIONS = [
   "ボイス"
 ] as const;
 
+const AI_TOOL_OPTIONS = [
+  "DALL-E 3",
+  "Grok",
+  "Whisk",
+  "Midjourney",
+  "Stable Diffusion",
+  "Firefly (Adobe)",
+  "Imagen (Google)",
+  "Leonardo.AI",
+  "Flux Kontext",
+  "Reve",
+  "Runway",
+  "Pika",
+  "Sora (OpenAI)",
+  "Kling",
+  "Veo (Google)",
+  "Seedream 4.0",
+  "Nano Banana",
+  "Multi Ref",
+  "その他"
+] as const;
+
 export function TimelineView() {
   const project = useProjectStore((state) => state.project);
   const updateTrack = useProjectStore((state) => state.updateTrack);
@@ -35,18 +58,143 @@ export function TimelineView() {
   const updateAssetMetadata = useProjectStore((state) => state.updateAssetMetadata);
   const activeCell = useProjectStore((state) => state.activeCell);
 
+  const [showBulkEdit, setShowBulkEdit] = React.useState(false);
+  const [bulkMetadata, setBulkMetadata] = React.useState<{
+    aiTool: string[];
+    promptFormat: string;
+    prompt: string;
+    tags: string[];
+  }>({
+    aiTool: [],
+    promptFormat: "",
+    prompt: "",
+    tags: []
+  });
+
   const clips = [...project.tracks].sort((a, b) => a.cellIndex - b.cellIndex);
+
+  const applyBulkEdit = () => {
+    clips.forEach((clip) => {
+      const asset = project.assets.find((item) => item.id === clip.assetId);
+      if (asset) {
+        updateAssetMetadata(asset.id, {
+          ...asset.metadata,
+          ...bulkMetadata
+        });
+      }
+    });
+    setShowBulkEdit(false);
+  };
 
   return (
     <section className="flex min-h-[260px] shrink-0 flex-col rounded-2xl border border-border/50 bg-zinc-950/70 p-4 shadow-inner shadow-black/40">
-      <header className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">タイムライン</h2>
-          <p className="text-[11px] text-muted-foreground">各セルのトリム、音量、メタデータをここで調整できるよ。</p>
+      <header className="mb-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">タイムライン</h2>
+            <p className="text-[11px] text-muted-foreground">各セルのトリム、音量、メタデータをここで調整できるよ。</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-zinc-900/70 px-3 py-1 text-[10px] text-muted-foreground">
+              全長: {formatDuration(getMaxDuration(clips))}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowBulkEdit(!showBulkEdit)}
+              className="text-xs"
+            >
+              {showBulkEdit ? "一括編集を閉じる" : "全セル一括編集"}
+            </Button>
+          </div>
         </div>
-        <div className="rounded-full bg-zinc-900/70 px-3 py-1 text-[10px] text-muted-foreground">
-          全長: {formatDuration(getMaxDuration(clips))}
-        </div>
+        {showBulkEdit && (
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/20 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-emerald-200">全セル一括編集</p>
+              <Button size="sm" onClick={applyBulkEdit} className="bg-emerald-600 hover:bg-emerald-700 text-xs">
+                全セルに適用
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-[10px] text-emerald-100">AI ツール（複数選択可）</Label>
+                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto bg-zinc-950/40 rounded p-2">
+                  {AI_TOOL_OPTIONS.map((tool) => (
+                    <div key={tool} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`bulk-ai-${tool}`}
+                        checked={bulkMetadata.aiTool.includes(tool)}
+                        onCheckedChange={(checked) => {
+                          setBulkMetadata({
+                            ...bulkMetadata,
+                            aiTool: checked
+                              ? [...bulkMetadata.aiTool, tool]
+                              : bulkMetadata.aiTool.filter((t) => t !== tool)
+                          });
+                        }}
+                      />
+                      <label htmlFor={`bulk-ai-${tool}`} className="text-[10px] text-white leading-none">
+                        {tool}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] text-emerald-100">タグ（複数選択可）</Label>
+                <div className="grid grid-cols-2 gap-2 bg-zinc-950/40 rounded p-2">
+                  {TAG_OPTIONS.map((tag) => (
+                    <div key={tag} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`bulk-tag-${tag}`}
+                        checked={bulkMetadata.tags.includes(tag)}
+                        onCheckedChange={(checked) => {
+                          setBulkMetadata({
+                            ...bulkMetadata,
+                            tags: checked
+                              ? [...bulkMetadata.tags, tag]
+                              : bulkMetadata.tags.filter((t) => t !== tag)
+                          });
+                        }}
+                      />
+                      <label htmlFor={`bulk-tag-${tag}`} className="text-[10px] text-white leading-none">
+                        {tag}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] text-emerald-100">プロンプト形式</Label>
+                <Select
+                  value={bulkMetadata.promptFormat}
+                  onValueChange={(value) => setBulkMetadata({ ...bulkMetadata, promptFormat: value })}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-zinc-950/40">
+                    <SelectValue placeholder="形式を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="JSON">JSON</SelectItem>
+                    <SelectItem value="YAML">YAML</SelectItem>
+                    <SelectItem value="Plain Text">Plain Text</SelectItem>
+                    <SelectItem value="Markdown">Markdown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] text-emerald-100">プロンプト内容</Label>
+                <Input
+                  type="text"
+                  placeholder="プロンプトの内容"
+                  value={bulkMetadata.prompt}
+                  onChange={(e) => setBulkMetadata({ ...bulkMetadata, prompt: e.target.value })}
+                  className="h-8 text-xs bg-zinc-950/40"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </header>
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-3 pr-2">
@@ -75,13 +223,13 @@ export function TimelineView() {
                         {asset.type.toUpperCase()} · {formatDuration(clip.in)} – {formatDuration(clip.out)} / 合計
                         {formatDuration(clip.duration)}
                       </span>
-                      {asset.metadata && (asset.metadata.aiTool || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
+                      {asset.metadata && ((asset.metadata.aiTool && asset.metadata.aiTool.length > 0) || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0)) && (
                         <div className="flex flex-wrap gap-2 text-[10px]">
-                          {asset.metadata.aiTool && (
-                            <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-indigo-200">
-                              AI: {asset.metadata.aiTool}
+                          {asset.metadata.aiTool && asset.metadata.aiTool.map((tool) => (
+                            <span key={tool} className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-indigo-200">
+                              {tool}
                             </span>
-                          )}
+                          ))}
                           {asset.metadata.promptFormat && (
                             <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-200">
                               形式: {asset.metadata.promptFormat}
@@ -159,41 +307,36 @@ export function TimelineView() {
                       <Tag className="h-3 w-3" /> メタデータ / タグ
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px]">AI ツール</Label>
-                      <Select
-                        value={asset.metadata?.aiTool ?? ""}
-                        onValueChange={(value) =>
-                          updateAssetMetadata(asset.id, {
-                            ...asset.metadata,
-                            aiTool: value
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="ツールを選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DALL-E 3">DALL-E 3</SelectItem>
-                          <SelectItem value="Grok">Grok</SelectItem>
-                          <SelectItem value="Whisk">Whisk</SelectItem>
-                          <SelectItem value="Midjourney">Midjourney</SelectItem>
-                          <SelectItem value="Stable Diffusion">Stable Diffusion</SelectItem>
-                          <SelectItem value="Firefly">Firefly (Adobe)</SelectItem>
-                          <SelectItem value="Imagen">Imagen (Google)</SelectItem>
-                          <SelectItem value="Leonardo.AI">Leonardo.AI</SelectItem>
-                          <SelectItem value="Flux Kontext">Flux Kontext</SelectItem>
-                          <SelectItem value="Reve">Reve</SelectItem>
-                          <SelectItem value="Runway">Runway</SelectItem>
-                          <SelectItem value="Pika">Pika</SelectItem>
-                          <SelectItem value="Sora">Sora (OpenAI)</SelectItem>
-                          <SelectItem value="Kling">Kling</SelectItem>
-                          <SelectItem value="Veo">Veo (Google)</SelectItem>
-                          <SelectItem value="Seedream 4.0">Seedream 4.0</SelectItem>
-                          <SelectItem value="Nano Banana">Nano Banana</SelectItem>
-                          <SelectItem value="Multi Ref">Multi Ref</SelectItem>
-                          <SelectItem value="その他">その他</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-[10px]">AI ツール（複数選択可）</Label>
+                      <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                        {AI_TOOL_OPTIONS.map((tool) => {
+                          const isChecked = asset.metadata?.aiTool?.includes(tool) ?? false;
+                          return (
+                            <div key={tool} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`${asset.id}-ai-${tool}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  const currentTools = asset.metadata?.aiTool ?? [];
+                                  const newTools = checked
+                                    ? [...currentTools, tool]
+                                    : currentTools.filter((t) => t !== tool);
+                                  updateAssetMetadata(asset.id, {
+                                    ...asset.metadata,
+                                    aiTool: newTools
+                                  });
+                                }}
+                              />
+                              <label
+                                htmlFor={`${asset.id}-ai-${tool}`}
+                                className="text-[10px] leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                {tool}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px]">プロンプト形式</Label>

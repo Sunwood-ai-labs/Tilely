@@ -155,6 +155,65 @@ export async function exportProjectToImage(project: Project): Promise<Blob> {
 
     ctx.restore();
 
+    // Draw metadata overlay
+    if (asset?.metadata && ((asset.metadata.aiTool && asset.metadata.aiTool.length > 0) || asset.metadata.promptFormat || asset.metadata.prompt || (asset.metadata.tags && asset.metadata.tags.length > 0))) {
+      ctx.save();
+
+      const fontSize = Math.max(10, cellHeight * 0.035);
+      const lineHeight = fontSize * 1.4;
+      const overlayPadding = Math.max(8, cellWidth * 0.02);
+
+      let textLines: Array<{ text: string; color: string }> = [];
+
+      if (asset.metadata.aiTool && asset.metadata.aiTool.length > 0) {
+        const aiToolsText = asset.metadata.aiTool.join(", ");
+        const maxLength = Math.floor(cellWidth / (fontSize * 0.6));
+        const truncated = aiToolsText.length > maxLength
+          ? aiToolsText.substring(0, maxLength) + "..."
+          : aiToolsText;
+        textLines.push({ text: `AI: ${truncated}`, color: "rgba(165, 180, 252, 1)" });
+      }
+      if (asset.metadata.promptFormat) {
+        textLines.push({ text: `形式: ${asset.metadata.promptFormat}`, color: "rgba(110, 231, 183, 1)" });
+      }
+      if (asset.metadata.prompt) {
+        const maxLength = Math.floor(cellWidth / (fontSize * 0.6));
+        const truncated = asset.metadata.prompt.length > maxLength
+          ? asset.metadata.prompt.substring(0, maxLength) + "..."
+          : asset.metadata.prompt;
+        textLines.push({ text: `プロンプト: ${truncated}`, color: "rgba(251, 191, 36, 1)" });
+      }
+      if (asset.metadata.tags && asset.metadata.tags.length > 0) {
+        const tagsText = asset.metadata.tags.join(", ");
+        const maxLength = Math.floor(cellWidth / (fontSize * 0.6));
+        const truncated = tagsText.length > maxLength
+          ? tagsText.substring(0, maxLength) + "..."
+          : tagsText;
+        textLines.push({ text: `タグ: ${truncated}`, color: "rgba(216, 180, 254, 1)" });
+      }
+
+      const overlayHeight = textLines.length * lineHeight + overlayPadding * 2;
+      const gradientY = y + cellHeight - overlayHeight;
+
+      // Draw gradient background
+      const gradient = ctx.createLinearGradient(x, gradientY, x, y + cellHeight);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.7)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0.9)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, gradientY, cellWidth, overlayHeight);
+
+      // Draw text
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.textBaseline = "top";
+
+      textLines.forEach((line, i) => {
+        ctx.fillStyle = line.color;
+        ctx.fillText(line.text, x + overlayPadding, gradientY + overlayPadding + i * lineHeight, cellWidth - overlayPadding * 2);
+      });
+
+      ctx.restore();
+    }
+
     if ((style.borderWidth ?? 0) > 0) {
       ctx.save();
       ctx.lineWidth = style.borderWidth!;
